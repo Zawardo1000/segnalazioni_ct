@@ -1,0 +1,114 @@
+# Docker sul PC e nella CI: il backend con la stessa immagine (Dockerfile) e gli stessi vincoli del server, con il
+# codice del repo montato in sola lettura, piu' un Postgres con PostGIS solo per il PC (sul server c'e' quello
+# condiviso, con lo stesso PostGIS).
+#   docker compose up --build        avvia Postgres e il backend (Ctrl+C per fermarli)
+#   docker compose run --rm test     controllo del codice (ruff) e test (pytest), come la CI
+#   docker compose exec segnalazioni python -m segnalazioni importa-osm    stradario OSM (scarica circa 800 MB)
+#   http://127.0.0.1:8013/           pagina di prova dell'abbinamento (chiave di accesso sul PC: prova)
+#   http://127.0.0.1:8013/health     controllo di salute
+# Sul PC la geolocalizzazione del browser funziona solo da 127.0.0.1/localhost (serve HTTPS altrove): dal telefono
+# si prova sul server. Sul PC si prova un punto tenendolo premuto sulla mappa.
+name: segnalazioni-dev
+
+x-app: &app
+  build:
+    context: .
+  image: local/segnalazioni-dev
+  init: true
+  read_only: true
+  user: "10001:10001"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment:
+    TZ: Europe/Rome
+    HOME: /tmp
+    XDG_CACHE_HOME: /tmp/.cache
+    WEB_HOST: 0.0.0.0
+    WEB_PORT: "8013"
+    LOG_DIR: /logs
+    DATA_DIR: /data
+    # Postgres del PC (servizio qui sotto): utente e password di prova, non segreti
+    DATABASE_URL: postgresql+psycopg://segnalazioni:segnalazioni@postgres:5432/segnalazioni
+    # i test usano un database a parte, svuotato a ogni test
+    TEST_DATABASE_URL: postgresql+psycopg://segnalazioni:segnalazioni@postgres:5432/segnalazioni_test
+    # chiave della pagina di prova sul PC (non segreta); sul server e' un segreto nel .env
+    CHIAVE_ACCESSO: prova
+  # 1 GB come sul server: basta anche all'importazione dello stradario (osm2pgsql --slim)
+  mem_limit: 1g
+  cpus: "1"
+  pids_limit: 128
+
+services:
+  segnalazioni:
+    <<: *app
+    container_name: segnalazioni-dev
+    command: ["python", "main.py"]
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    volumes:
+      - .:/app:ro
+      - ./logs:/logs
+      - ./local-data:/data
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    ports:
+      - "127.0.0.1:8013:8013"
+    healthcheck:
+      test: ["CMD", "python", "-I", "-S", "-c", 'import socket; s = socket.create_connection(("127.0.0.1", 8013), 3); s.sendall(b"GET /health HTTP/1.0\r\n\r\n"); assert b" 200 " in s.recv(64)']
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 5s
+
+  # Solo per il PC e la CI. Sul server il backend usa il Postgres condiviso (rete backend), con PostGIS.
+  postgres:
+    build:
+      context: docker/postgres
+    image: local/segnalazioni-postgres-dev
+    container_name: segnalazioni-postgres-dev
+    environment:
+      POSTGRES_USER: segnalazioni
+      POSTGRES_PASSWORD: segnalazioni
+      POSTGRES_DB: segnalazioni
+      TZ: Europe/Rome
+    volumes:
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5434:5432"  # per Navicat/psql dal PC (5432 e 5433 possono essere gia' occupate)
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "segnalazioni", "-d", "segnalazioni"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+      start_interval: 1s
+
+  # Solo con "docker compose run --rm test": niente .env, i test non usano segreti ne' Internet
+  # (la rete serve solo a scaricare pytest e ruff, in /tmp, ogni volta)
+  test:
+    <<: *app
+    profiles: [test]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >-
+        pip install --quiet --target /tmp/dev -r requirements-dev.txt
+        && /tmp/dev/bin/ruff check --no-cache .
+        && PYTHONPATH=/tmp/dev python -m pytest -q -p no:cacheprovider tests
+    volumes:
+      - .:/app:ro
+    tmpfs:
+      # exec: ruff è un programma installato in /tmp (il container del backend non lo permette)
+      - /tmp:size=768m,mode=1777,exec
+
+volumes:
+  pgdata:

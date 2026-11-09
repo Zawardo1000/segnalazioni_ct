@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Abbina strada</title>
+  <meta name="description" content="Prova dell'abbinamento tra una posizione e l'ente competente per la strada">
+  <meta name="theme-color" content="#0b3d6b">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="testata">
+    <h1>Abbina strada</h1>
+    <span id="gps" class="gps">GPS…</span>
+  </header>
+
+  <main>
+    <form id="form-chiave" class="blocco" hidden>
+      <label for="chiave">Chiave di accesso</label>
+      <div class="riga-bottoni">
+        <input id="chiave" type="password" autocomplete="current-password" required>
+        <button type="submit">Salva</button>
+      </div>
+      <p class="piccolo">Resta salvata solo su questo telefono.</p>
+    </form>
+
+    <button id="dove" class="primario" type="button">Dove sono?</button>
+    <p class="piccolo suggerimento">Oppure tieni premuto un punto della mappa per provarlo.</p>
+
+    <div id="mappa" role="application" aria-label="Mappa"></div>
+
+    <section id="stato" aria-live="polite"></section>
+    <section id="risultato" hidden></section>
+  </main>
+
+  <footer class="piede">
+    Dati © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>
+    <span id="stradario"></span> · <span id="versione"></span>
+  </footer>
+
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

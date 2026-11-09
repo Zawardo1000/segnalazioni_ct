@@ -1,0 +1,64 @@
+"""Importazione vera con osmium e osm2pgsql (pacchetti dell'immagine) su un piccolo file OSM, senza rete."""
+
+import pytest
+from sqlalchemy import text
+
+from segnalazioni import abbinamento, importa_osm, stradario
+from segnalazioni.config import AreaOSM
+from segnalazioni.db import Database
+from tests.conftest import impostazioni
+from tests.helpers import MINI_OSM
+
+
+@pytest.fixture
+def db(database_url):
+    d = Database(database_url)
+    d.migrate()  # PostGIS
+    yield d
+    d.dispose()
+
+
+def _settings(database_url, tmp_path):
+    area = AreaOSM(nome="Prova", url="https://example.invalid/prova.osm.pbf", bbox=(15.13, 37.56, 15.19, 37.60))
+    return impostazioni(database_url, tmp_path, osm_aree=[area], osm2pgsql_cache_mb=50)
+
+
+def test_importa_ritaglia_e_si_legge(db, database_url, tmp_path):
+    r = importa_osm.esegui(_settings(database_url, tmp_path), file=MINI_OSM)
+    assert (r["vie"], r["comuni"]) == (2, 2)  # la strada in costruzione resta fuori
+    with db.session() as s:
+        st = stradario.stato(s)
+        intorno = stradario.leggi_intorno(s, 37.58, 15.1686, 100)
+        middle = s.scalar(text("SELECT count(*) FROM pg_tables WHERE tablename LIKE 'planet_osm%'"))
+    assert st["aree"] == "Prova" and st["bbox"][0]["nome"] == "Prova"
+    assert middle == 0  # --drop: niente tabelle intermedie
+    assert intorno["comune"]["nome"] == "Acireale"
+    assert intorno["provincia"]["tags"]["ref"] == "CT"
+    assert intorno["regione"]["nome"] == "Sicilia"
+    risultato = abbinamento.abbina(37.58, 15.1686, 5, intorno)
+    assert risultato["principale"] == 200
+    assert risultato["ente"]["nome"] == "ANAS – Struttura territoriale Sicilia"
+    # ritagli e file intermedi cancellati, il file indicato a mano resta
+    assert not list((tmp_path / "data" / "osm").glob("*.pbf"))
+    assert MINI_OSM.exists()
+
+
+def test_nuova_importazione_sostituisce_la_vecchia(db, database_url, tmp_path):
+    s = _settings(database_url, tmp_path)
+    importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
+    importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
+    with db.engine.connect() as c:
+        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 2
+        assert c.scalar(text("SELECT count(*) FROM osm.importazione")) == 1
+        assert c.scalar(text("SELECT to_regnamespace('osm_import')")) is None
+
+
+def test_importazione_vuota_lascia_lo_stradario_di_prima(db, database_url, tmp_path):
+    s = _settings(database_url, tmp_path)
+    importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
+    vuoto = tmp_path / "vuoto.osm"
+    vuoto.write_text('<?xml version="1.0"?><osm version="0.6"></osm>', encoding="utf-8")
+    with pytest.raises(RuntimeError, match="importazione vuota"):
+        importa_osm.esegui(s, file=vuoto, ritaglio=False)
+    with db.engine.connect() as c:
+        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 2

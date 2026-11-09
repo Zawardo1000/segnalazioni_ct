@@ -1,0 +1,5 @@
+Casi di test verificati sul posto dall'utente (docs/PROGETTO.md §3.2 sul PC), catturati con
+tests/scripts/cattura_caso.py da Overpass e Nominatim.
+
+Dati © OpenStreetMap contributors, disponibili con licenza Open Database License (ODbL):
+https://www.openstreetmap.org/copyright

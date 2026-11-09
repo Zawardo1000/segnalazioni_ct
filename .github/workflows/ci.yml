@@ -1,0 +1,66 @@
+# CI del backend: a ogni push su main e a ogni pull request, su una macchina come il server (Ubuntu 26.04, ARM64)
+# e dentro la stessa immagine: controllo del codice (ruff) e test (pytest, con un Postgres+PostGIS vero), come
+# "docker compose run --rm test". Se passano su main, il ramo "produzione" viene spostato su quel commit: il
+# server lo scarica da se' (deploy in pull, GitHub non ha nessun accesso al server). "produzione" lo muove solo
+# questo workflow.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # un push nuovo annulla il controllo di quello precedente ancora in corso
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Controlli e test (ARM64)
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Immagini (come sul server)
+        run: docker compose build segnalazioni postgres
+      - name: Ruff e pytest
+        run: docker compose run --rm test
+      - name: Log di Postgres (solo se qualcosa non va)
+        if: failure()
+        run: docker compose logs --no-color --tail 100 postgres
+
+  produzione:
+    name: Aggiorna il ramo produzione
+    needs: [test]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Sposta produzione su questo commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Solo in avanti (force=false): un controllo vecchio finito in ritardo non riporta indietro la
+          # produzione. Se main e' stato riscritto (push --force) questo passo fallisce: va sistemato a mano.
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY/git"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          code=$(curl -s -o /dev/null -w '%{http_code}' "${auth[@]}" "$api/ref/heads/produzione")
+          if [ "$code" = 200 ]; then
+            curl -sS --fail-with-body -o /dev/null -X PATCH "${auth[@]}" "$api/refs/heads/produzione" \
+                 -d "{\"sha\":\"$GITHUB_SHA\",\"force\":false}"
+          elif [ "$code" = 404 ]; then
+            curl -sS --fail-with-body -o /dev/null -X POST "${auth[@]}" "$api/refs" \
+                 -d "{\"ref\":\"refs/heads/produzione\",\"sha\":\"$GITHUB_SHA\"}"
+          else
+            echo "::error::GitHub API: HTTP $code leggendo il ramo produzione"; exit 1
+          fi
+          echo "produzione -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

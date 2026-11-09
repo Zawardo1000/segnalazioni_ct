@@ -1,0 +1,12 @@
+# Dipendenze dirette, con versione minima. Le versioni esatte verificate stanno in requirements.lock:
+# la build installa prima il lock, poi questo file.
+fastapi>=0.141.1
+uvicorn>=0.53.0
+pydantic-settings>=2.15.0
+sqlalchemy>=2.0.54
+alembic>=1.20.0
+psycopg[binary]>=3.3.8
+# colonne PostGIS (geography) in SQLAlchemy e Alembic; puro Python
+geoalchemy2>=0.17.1
+httpx>=0.28.1
+tzdata>=2026.4

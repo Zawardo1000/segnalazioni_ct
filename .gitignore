@@ -1,0 +1,17 @@
+# Note e documentazione (CLAUDE.md, docs/): restano sul PC, mai nel repository, che è pubblico.
+# Contengono indirizzi e accessi del server (scelta dell'utente, 09/11/2026).
+*.md
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Sul PC: segreti, log, dati, prove
+.env
+logs/
+local-data/
+scratch/
+.claude/settings.local.json

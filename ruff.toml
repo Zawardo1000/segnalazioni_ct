@@ -1,0 +1,7 @@
+# Controllo del codice con ruff: solo errori veri, non lo stile.
+target-version = "py315"
+extend-exclude = ["scratch"]
+
+[lint]
+# E9 = errori di sintassi; F = pyflakes (nomi non definiti, import e variabili inutilizzati, ...)
+select = ["E9", "F"]

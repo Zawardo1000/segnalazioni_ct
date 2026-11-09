@@ -1,0 +1,6 @@
+* text=auto eol=lf
+
+# Binari: mai convertire
+*.png  binary
+*.jpg  binary
+*.webp binary

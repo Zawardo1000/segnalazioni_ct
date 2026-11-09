@@ -1,0 +1,76 @@
+/* Pagina di prova: leggibile all'aperto, con il sole (contrasto alto, testo grande, bottoni grandi). */
+:root {
+  --blu: #0b3d6b;
+  --testo: #111;
+  --fioco: #555;
+  --sfondo: #fff;
+  --riquadro: #f3f5f8;
+  --bordo: #d5dbe3;
+  --verde: #1b7a31;
+  --giallo: #9a6700;
+  --rosso: #b3261e;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--testo);
+  background: var(--sfondo);
+}
+.testata {
+  position: sticky; top: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--blu); color: #fff;
+}
+.testata h1 { margin: 0; font-size: 19px; }
+.gps { font-size: 14px; padding: 3px 8px; border-radius: 999px; background: rgba(255, 255, 255, .15); white-space: nowrap; }
+.gps.bene { background: #2e7d32; }
+.gps.medio { background: #a66a00; }
+.gps.male { background: #b3261e; }
+main { max-width: 720px; margin: 0 auto; padding: 12px 16px 24px; }
+button, input, select, textarea { font: inherit; }
+button {
+  min-height: 44px; padding: 8px 16px; border: 1px solid var(--bordo); border-radius: 10px;
+  background: var(--riquadro); color: var(--testo); cursor: pointer;
+}
+button:disabled { opacity: .55; }
+button.primario {
+  width: 100%; min-height: 56px; border: 0; background: var(--blu); color: #fff; font-size: 20px; font-weight: 600;
+}
+input, select, textarea { width: 100%; padding: 10px; border: 1px solid var(--bordo); border-radius: 10px; background: #fff; }
+.riga-bottoni { display: flex; gap: 8px; align-items: stretch; }
+.riga-bottoni > * { flex: 1; }
+.piccolo { font-size: 14px; color: var(--fioco); }
+.suggerimento { margin: 6px 0 10px; }
+#mappa { height: 46vh; min-height: 260px; border-radius: 12px; border: 1px solid var(--bordo); }
+.msg { margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: var(--riquadro); }
+.msg.errore { background: #fdecea; color: var(--rosso); }
+.blocco { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--bordo); border-radius: 12px; }
+.blocco h2 { margin: 0 0 8px; font-size: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--fioco); }
+.ente { margin-top: 14px; padding: 14px; border-radius: 12px; background: var(--riquadro); border-left: 8px solid #616161; }
+.etichetta { font-size: 14px; color: var(--fioco); }
+.nome-ente { font-size: 24px; font-weight: 700; line-height: 1.2; margin: 2px 0 6px; }
+.contatti { margin-bottom: 6px; }
+.affidabilita { display: inline-block; font-size: 14px; font-weight: 600; padding: 2px 10px; border-radius: 999px; color: #fff; }
+.affidabilita.alta { background: var(--verde); }
+.affidabilita.media { background: var(--giallo); }
+.affidabilita.bassa { background: var(--rosso); }
+ul.motivi { margin: 0; padding-left: 20px; }
+ul.motivi li { margin: 4px 0; }
+.dubbi { border-color: #e7c98a; background: #fff8e6; }
+table.dati { width: 100%; border-collapse: collapse; }
+table.dati th { text-align: left; font-weight: 500; color: var(--fioco); padding: 4px 8px 4px 0; vertical-align: top; width: 40%; }
+table.dati td { padding: 4px 0; overflow-wrap: anywhere; }
+.candidato { display: flex; width: 100%; gap: 10px; align-items: center; text-align: left; margin: 6px 0; }
+.candidato.scelto { outline: 3px solid var(--blu); }
+.campione { flex: 0 0 14px; height: 14px; border-radius: 3px; background: #616161; }
+.candidato .testo { flex: 1; }
+.candidato .sotto { display: block; font-size: 14px; color: var(--fioco); }
+button.giusto { background: var(--verde); color: #fff; border: 0; }
+button.sbagliato-btn { background: var(--rosso); color: #fff; border: 0; }
+.sbagliato { display: grid; gap: 8px; margin-top: 10px; }
+.sbagliato[hidden] { display: none; }
+a { color: var(--blu); }
+.piede { padding: 12px 16px 24px; padding-bottom: max(24px, env(safe-area-inset-bottom)); font-size: 13px; color: var(--fioco); text-align: center; }

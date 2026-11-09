@@ -1,0 +1,4 @@
+# Alla build servono solo le dipendenze: codice, segreti e log arrivano montati (compose.yaml)
+*
+!requirements.txt
+!requirements.lock
