@@ -276,6 +276,22 @@ def test_fuori_dai_centri_e_vicino_al_limite():
     assert v["ente"]["codice"] == "comune" and any("dal limite del centro" in d for d in v["dubbi"])
 
 
+def test_contano_solo_i_centri_del_comune_del_punto():
+    # come a Monza vicino al confine: i cartelli di Muggiò sconfinano, ma il centro abitato lo delimita ogni Comune
+    ctx = Contesto({
+        "comune": {"nome": "Monza", "tags": {"ref:ISTAT": "108033"}},
+        "provincia": {"nome": "Monza e della Brianza", "tags": {"ref": "MB"}},
+        "regione": {"nome": "Lombardia", "tags": {"ref:ISTAT": "03"}},
+        "istat": {"regioni": [3], "vicini": [],
+                  "centri": [_centro("Muggiò", 23496, fonte="cartelli", pro_com=108034),
+                             _centro("Monza", 121613, pro_com=108033)]},
+    })
+    v = valuta_via({"highway": "tertiary", "ref": "SP151"}, ctx)
+    assert v["ente"] == {"codice": "comune", "nome": "Comune di Monza"}
+    assert any("«Monza»" in m and "121.613" in m for m in v["motivi"])
+    assert not any("Muggiò" in m for m in v["motivi"])
+
+
 def test_strada_extraurbana_principale_in_un_centro_grande():
     v = valuta_via({"highway": "trunk", "ref": "SS 114"}, _con_centri([_centro("Catania", 296286)]))
     assert v["ente"]["codice"] == "anas"

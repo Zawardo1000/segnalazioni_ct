@@ -156,7 +156,7 @@ def _centri(session: Session, lat: float, lon: float, regioni: list[int]) -> dic
     punto = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
     par = {"lat": lat, "lon": lon, "r": BORDO_CENTRO_M, "dx": BORDO_CENTRO_M / m_lon, "dy": BORDO_CENTRO_M / m_lat,
            "soglia": SOGLIA_BASSA}
-    campi = "fonte, nome, popolazione, popolazione_localita, popolazione_osm, localita_istat, diviso, tipo_loc"
+    campi = "fonte, nome, pro_com, popolazione, popolazione_localita, popolazione_osm, localita_istat, diviso, tipo_loc"
     dentro = session.execute(
         text(
             f"SELECT {campi}, CASE WHEN fonte = 'istat' THEN "

@@ -146,15 +146,21 @@ class Contesto:
         self.sigla = _sigla_provincia(prov)
         self.regione = ((intorno.get("regione") or {}).get("nome") or "").strip() or None
         self.comuni_vicini = sorted({n for n in intorno.get("comuni_vicini") or [] if n and n != self.comune})
-        # centri abitati: solo se ci sono le sezioni Istat della regione del punto
+        # centri abitati: solo se ci sono le sezioni Istat della regione del punto, e solo quelli del Comune del punto
+        # (un Comune delimita i centri nel suo territorio: i cartelli di Muggiò non valgono a Monza)
         tags_regione = (intorno.get("regione") or {}).get("tags") or {}
         codice = _intero(str(tags_regione.get("ref:ISTAT") or ""))
+        codice_comune = _intero(str((((intorno.get("comune") or {}).get("tags")) or {}).get("ref:ISTAT") or ""))
         istat = intorno.get("istat") or {}
         self.con_istat = codice is not None and codice in (istat.get("regioni") or [])
-        centri = istat.get("centri") or [] if self.con_istat else []
+
+        def del_comune(c: dict) -> bool:
+            return codice_comune is None or c.get("pro_com") is None or c.get("pro_com") == codice_comune
+
+        centri = [c for c in istat.get("centri") or [] if del_comune(c)] if self.con_istat else []
         self.centro_cartelli = next((c for c in centri if c.get("fonte") == "cartelli"), None)
         self.centro_istat = next((c for c in centri if c.get("fonte") == "istat"), None)
-        self.centri_vicini = list(istat.get("vicini") or []) if self.con_istat else []
+        self.centri_vicini = [c for c in istat.get("vicini") or [] if del_comune(c)] if self.con_istat else []
 
 
 def ente_anas(ctx: Contesto) -> dict:
@@ -394,9 +400,9 @@ def _traversa(tags: dict, ctx: Contesto, ente: dict, sigla: str | None, motivi: 
     if centro is ctx.centro_cartelli:
         dove = f"tra i cartelli di centro abitato «{nome}» (OSM)"
     elif centro.get("tipo_loc") == 2:
-        dove = f"nel nucleo abitato «{nome}» (Istat)"
+        dove = f"nel nucleo abitato «{nome}»"
     else:
-        dove = f"nel centro abitato «{nome}» (sezioni Istat)"
+        dove = f"nel centro abitato «{nome}»"
     pop, fonte = centro.get("popolazione"), "sezioni Istat 2021"
     if pop is None and ctx.centro_istat is not None and centro is not ctx.centro_istat:
         # cartelli senza una località Istat collegata: gli abitanti del centro Istat in cui cade il punto
