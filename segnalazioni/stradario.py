@@ -126,7 +126,8 @@ def leggi_intorno(session: Session, lat: float, lon: float, raggio_m: int) -> di
         "regione": confine(per_livello.get(4)),
         "comuni_vicini": [n for n in vicini if n],
         **_punti_vicini(session, lat, lon),
-        "istat": _centri(session, lat, lon, (st.get("istat") or {}).get("regioni") or []),
+        "istat": _centri(session, lat, lon, (st.get("istat") or {}).get("regioni") or [],
+                         ((comune or {}).get("tags") or {}).get("ref:ISTAT")),
         "fonte": {"tipo": "stradario", "dati_del": st.get("dati_del"), "importato_il": st.get("importato_il")},
     }
 
@@ -146,12 +147,19 @@ def _percorsi(session: Session, way_ids: list[int]) -> dict[int, list[dict]]:
     return uscita
 
 
-def _centri(session: Session, lat: float, lon: float, regioni: list[int]) -> dict:
-    """Centri abitati (tabella osm.centri, istat.py) che contengono il punto, prima quelli dei cartelli, e i centri
-    Istat grandi appena fuori. regioni: le regioni (codici Istat) di cui ci sono le sezioni."""
-    vuoto = {"regioni": regioni, "centri": [], "vicini": []}
+def _centri(session: Session, lat: float, lon: float, regioni: list[int], ref_comune: str | None = None) -> dict:
+    """Centri abitati (tabella osm.centri, istat.py) che contengono il punto, prima quelli dei cartelli, i centri
+    Istat grandi appena fuori e gli abitanti del Comune del punto (ref_comune: il suo ref:ISTAT in OSM).
+    regioni: le regioni (codici Istat) di cui ci sono le sezioni."""
+    vuoto = {"regioni": regioni, "centri": [], "vicini": [], "abitanti_comune": None}
     if not regioni or session.scalar(text("SELECT to_regclass('osm.centri')")) is None:
         return vuoto
+    abitanti_comune = None
+    ref = (ref_comune or "").strip()
+    if ref.isdigit() and len(ref) <= 6 and session.scalar(text("SELECT to_regclass('osm.comuni_istat')")) is not None:
+        abitanti_comune = session.scalar(
+            text("SELECT popolazione FROM osm.comuni_istat WHERE pro_com = :p"), {"p": int(ref)}
+        )
     m_lat, m_lon = metri_per_grado(lat)
     punto = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
     par = {"lat": lat, "lon": lon, "r": BORDO_CENTRO_M, "dx": BORDO_CENTRO_M / m_lon, "dy": BORDO_CENTRO_M / m_lat,
@@ -179,7 +187,8 @@ def _centri(session: Session, lat: float, lon: float, regioni: list[int]) -> dic
     def pulito(r) -> dict:
         return {k: (int(v) if k in ("dal_bordo_m", "distanza_m") and v is not None else v) for k, v in r.items()}
 
-    return {"regioni": regioni, "centri": [pulito(r) for r in dentro], "vicini": [pulito(r) for r in vicini]}
+    return {"regioni": regioni, "centri": [pulito(r) for r in dentro], "vicini": [pulito(r) for r in vicini],
+            "abitanti_comune": abitanti_comune}
 
 
 def _punti_vicini(session: Session, lat: float, lon: float) -> dict:

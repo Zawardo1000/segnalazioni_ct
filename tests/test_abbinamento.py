@@ -265,6 +265,31 @@ def test_cartelli_senza_abitanti_usano_il_centro_istat():
     assert any("sezioni Istat 2021 del centro «Catania»" in m for m in v["motivi"])
 
 
+def _rodano(abitanti_comune: int | None) -> Contesto:
+    # cartelli col nome del Comune, nessuna località con quel nome (le frazioni sono Lucino, Millepini, Pobbiano)
+    return Contesto({
+        "comune": {"nome": "Rodano", "tags": {"ref:ISTAT": "015185"}},
+        "provincia": {"nome": "Città metropolitana di Milano", "tags": {"ref": "MI"}},
+        "regione": {"nome": "Lombardia", "tags": {"ref:ISTAT": "03"}},
+        "istat": {"regioni": [3], "vicini": [], "abitanti_comune": abitanti_comune,
+                  "centri": [_centro("Rodano", None, fonte="cartelli")]},
+    })
+
+
+def test_cartelli_senza_abitanti_in_un_comune_piccolo():
+    sp = {"highway": "secondary", "ref": "SP14"}
+    v = valuta_via(sp, _rodano(4561))
+    assert v["ente"]["codice"] == "provincia" and v["dubbi"] == []
+    assert any("Il Comune di Rodano ha in tutto 4.561 abitanti" in m and "resta all'ente" in m for m in v["motivi"])
+    # Comune grande: gli abitanti del centro restano un dubbio, con quelli del Comune per orientarsi
+    v = valuta_via(sp, _rodano(36168))
+    assert v["ente"]["codice"] == "provincia"
+    assert any("non si sa quanti abitanti ha (il Comune di Rodano ne ha in tutto 36.168)" in d for d in v["dubbi"])
+    # senza il dato del Comune (stradario importato prima): come prima
+    v = valuta_via(sp, _rodano(None))
+    assert any(d.endswith("non si sa quanti abitanti ha: con più di 10.000 il tratto è del Comune") for d in v["dubbi"])
+
+
 def test_fuori_dai_centri_e_vicino_al_limite():
     vicino = _centro("Acireale", 28794, distanza_m=40)
     v = valuta_via(SS, _con_centri([], [vicino]))

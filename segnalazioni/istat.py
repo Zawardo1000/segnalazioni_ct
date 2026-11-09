@@ -199,10 +199,14 @@ def importa(c, schema: str, zips: list[Path], riquadri: list[tuple[float, float,
         "popolazione integer, wkb bytea, x0 float8, y0 float8, x1 float8, y1 float8)"
     )
     c.exec_driver_sql(f"CREATE TABLE {s}.localita_nomi (loc_id bigint PRIMARY KEY, nome text)")
+    # abitanti di ogni Comune delle regioni (tutte le sezioni, anche le case sparse e fuori dai riquadri): nessun suo
+    # centro abitato ne ha di più
+    c.exec_driver_sql(f"CREATE TABLE {s}.comuni_istat (pro_com integer PRIMARY KEY, popolazione integer NOT NULL)")
     grezzo = c.connection.driver_connection
     lette, popolazione = 0, 0
     regioni: set[int] = set()
     nomi: dict[int, str] = {}
+    comuni: dict[int, int] = {}
     with grezzo.cursor() as cur:
         with cur.copy(f"COPY {s}.sezioni_grezze FROM STDIN") as cp:
             for z in zips:
@@ -210,6 +214,7 @@ def importa(c, schema: str, zips: list[Path], riquadri: list[tuple[float, float,
                     lette += 1
                     popolazione += sez["popolazione"]
                     regioni.add(sez["regione"])
+                    comuni[sez["pro_com"]] = comuni.get(sez["pro_com"], 0) + sez["popolazione"]
                     if sez["wkb"] is not None:
                         cp.write_row((sez["sez_id"], sez["pro_com"], sez["loc_id"], sez["tipo_loc"],
                                       sez["popolazione"], sez["wkb"], *sez["bbox"]))
@@ -219,6 +224,9 @@ def importa(c, schema: str, zips: list[Path], riquadri: list[tuple[float, float,
         with cur.copy(f"COPY {s}.localita_nomi FROM STDIN") as cp:
             for loc_id, nome in nomi.items():
                 cp.write_row((loc_id, nome))
+        with cur.copy(f"COPY {s}.comuni_istat FROM STDIN") as cp:
+            for pro_com, abitanti in comuni.items():
+                cp.write_row((pro_com, abitanti))
     if not lette:
         raise RuntimeError("negli zip Istat non ci sono sezioni")
 
@@ -387,7 +395,8 @@ def importa(c, schema: str, zips: list[Path], riquadri: list[tuple[float, float,
         f"FROM {s}.centri"
     ).one()
     sezioni_caricate = c.exec_driver_sql(f"SELECT count(*) FROM {s}.sezioni").scalar()
-    risultato = {"regioni": sorted(regioni), "sezioni_lette": lette, "abitanti_regioni": popolazione, "sezioni": sezioni_caricate,
+    risultato = {"regioni": sorted(regioni), "sezioni_lette": lette, "abitanti_regioni": popolazione,
+                 "comuni": len(comuni), "sezioni": sezioni_caricate,
                  "centri_istat": r[0], "centri_divisi": r[1], "centri_cartelli": r[2], "centri_cartelli_con_abitanti": r[3]}
     log.info("sezioni Istat e centri abitati: %s", risultato)
     return risultato

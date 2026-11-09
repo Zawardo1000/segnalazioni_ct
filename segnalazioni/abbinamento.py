@@ -164,6 +164,8 @@ class Contesto:
         self.centro_cartelli = next((c for c in centri if c.get("fonte") == "cartelli"), None)
         self.centro_istat = next((c for c in centri if c.get("fonte") == "istat"), None)
         self.centri_vicini = [c for c in istat.get("vicini") or [] if del_comune(c)] if self.con_istat else []
+        # abitanti del Comune intero (tutte le sezioni Istat 2021): nessun suo centro abitato ne ha di più
+        self.abitanti_comune = istat.get("abitanti_comune") if self.con_istat else None
 
 
 def ente_anas(ctx: Contesto) -> dict:
@@ -411,10 +413,21 @@ def _traversa(tags: dict, ctx: Contesto, ente: dict, sigla: str | None, motivi: 
         # cartelli senza una località Istat collegata: gli abitanti del centro Istat in cui cade il punto
         pop = ctx.centro_istat.get("popolazione")
         fonte = f"sezioni Istat 2021 del centro «{ctx.centro_istat.get('nome')}»"
+    ab_comune = ctx.abitanti_comune
+    del_comune = f"Comune di {ctx.comune}" if ctx.comune else "Comune"
+    if pop is None and ab_comune is not None and ab_comune < SOGLIA_BASSA:
+        # i cartelli portano spesso il nome del Comune e non della frazione (Rodano: le frazioni sono Lucino,
+        # Millepini, Pobbiano): niente località collegata, ma un centro non può avere più abitanti del suo Comune
+        motivi.append(
+            f"Sei {dove}. Il {del_comune} ha in tutto {_ab(ab_comune)} abitanti (sezioni Istat 2021): nessun suo "
+            "centro abitato arriva a 10.000, il tratto resta all'ente della strada (art. 2 c. 7 CdS)"
+        )
+        return ente
     if pop is None and centro.get("popolazione_osm"):
         pop, fonte = centro["popolazione_osm"], "OSM"
     if pop is None:
-        dubbi.append(f"Sei {dove}, ma non si sa quanti abitanti ha: con più di 10.000 il tratto è del Comune")
+        in_tutto = f" (il {del_comune} ne ha in tutto {_ab(ab_comune)})" if ab_comune is not None else ""
+        dubbi.append(f"Sei {dove}, ma non si sa quanti abitanti ha{in_tutto}: con più di 10.000 il tratto è del Comune")
         return ente
     abitanti = f"circa {_ab(pop)} abitanti ({fonte})"
 
@@ -520,6 +533,7 @@ def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | No
         "sezioni_istat": bool(ctx and ctx.con_istat),
         "centro": _centro(ctx and (ctx.centro_cartelli or ctx.centro_istat)),
         "centro_istat": _centro(ctx and ctx.centro_cartelli and ctx.centro_istat),
+        "abitanti_comune": ctx.abitanti_comune if ctx else None,
         "fonte": (intorno or {}).get("fonte"),
     }
 

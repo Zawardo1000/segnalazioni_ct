@@ -81,6 +81,9 @@ def test_importazione_con_i_centri(db, database_url, tmp_path, zip_istat):
             "SELECT fonte, nome, popolazione, popolazione_localita, diviso FROM osm.centri"))}
         striscia = c.scalar(text(
             "SELECT c.nome FROM osm.sezioni z JOIN osm.centri c ON c.id = z.centro_id WHERE z.sez_id = 870040000004"))
+        # abitanti del Comune: tutte le sezioni, anche le case sparse
+        comuni = dict(c.execute(text("SELECT pro_com, popolazione FROM osm.comuni_istat")).all())
+    assert comuni == {87004: 15550} and r["istat"]["comuni"] == 1
     # il centro Istat diviso tra le località OSM; la frazione ha la sua sezione e la striscia della statale
     assert centri[("istat", "Acireale")] == (15000, 15400, True)
     assert centri[("istat", "Capomulini")] == (400, 15400, True)
@@ -109,7 +112,7 @@ def test_importazione_con_i_centri(db, database_url, tmp_path, zip_istat):
 
     assert dentro["ente"] == {"codice": "comune", "nome": "Comune di Acireale"}
     assert any(m.startswith("Traversa interna") and "15.000 abitanti" in m for m in dentro["motivi"])
-    assert dentro["centro"]["fonte"] == "istat"
+    assert dentro["centro"]["fonte"] == "istat" and dentro["abitanti_comune"] == 15550
 
     assert fuori["ente"]["nome"] == "Città metropolitana di Catania"
     assert fuori["centro"] is None and fuori["sezioni_istat"] is True
