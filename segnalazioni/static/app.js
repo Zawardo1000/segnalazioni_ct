@@ -276,7 +276,8 @@ function boxEsito(r) {
   const invia = async (esito) => {
     try {
       await chiama(`/api/v1/prove/${Number(r.id_prova)}/esito`, {
-        esito, osm_way_scelto: stato.scelta, ente_corretto: select.value || null, nota: nota.value || null,
+        token: r.token_esito, esito, osm_way_scelto: stato.scelta, ente_corretto: select.value || null,
+        nota: nota.value || null,
       });
       salvato.textContent = `Salvato: ${esito} (prova n. ${r.id_prova}).`;
     } catch (e) {

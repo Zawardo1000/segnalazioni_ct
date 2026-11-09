@@ -18,8 +18,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 CSP = (
     "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; script-src 'self'; style-src 'self'; "
-    "connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'self'; "
-    "frame-ancestors 'none'"
+    "connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; "
+    "form-action 'self'; frame-ancestors 'none'"
 )
 COMMON = {
     b"x-content-type-options": b"nosniff",

@@ -26,6 +26,7 @@ def test_pagina_file_e_intestazioni(app):
     assert r.status_code == 200 and "Abbina strada" in r.text
     csp = r.headers["content-security-policy"]
     assert "default-src 'self'" in csp and "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
+    assert "object-src 'none'" in csp
     assert r.headers["x-content-type-options"] == "nosniff"
     assert "geolocation=(self)" in r.headers["permissions-policy"]
     assert app.get("/manifest.webmanifest").headers["content-type"].startswith("application/manifest+json")
@@ -64,10 +65,12 @@ def test_abbina_salva_la_prova_e_l_esito(app, con_chiave):
     dati = r.json()
     assert dati["esito"] == "deciso" and dati["ente"]["codice"] == "anas"
     assert dati["candidati"][0]["geometria"]  # per disegnarla sulla mappa
-    id_prova = dati["id_prova"]
+    id_prova, token = dati["id_prova"], dati["token_esito"]
+    assert len(token) >= 16
 
     r = app.post(f"/api/v1/prove/{id_prova}/esito", headers=con_chiave,
-                 json={"esito": "sbagliato", "osm_way_scelto": 186213866, "ente_corretto": "Comune", "nota": " cartello "})
+                 json={"token": token, "esito": "sbagliato", "osm_way_scelto": 186213866, "ente_corretto": "Comune",
+                       "nota": " cartello "})
     assert r.status_code == 200
 
     with app.app.state.db.session() as s:
@@ -75,8 +78,30 @@ def test_abbina_salva_la_prova_e_l_esito(app, con_chiave):
     assert prova.esito_calcolo == "deciso" and prova.ente_calcolato.startswith("ANAS")
     assert prova.fonti["vie"]  # i dati letti: bastano per rifare il calcolo in un test
     assert "geometria" not in prova.risultato["candidati"][0]  # le geometrie stanno già in fonti
+    assert "token_esito" not in prova.risultato  # il codice non finisce nel risultato salvato
     assert (prova.esito, prova.ente_corretto, prova.nota) == ("sbagliato", "Comune", "cartello")
     assert prova.origine == "gps"
+
+
+def test_esito_solo_con_il_codice_della_prova(app, con_chiave):
+    p = _c1(app)
+    dati = app.post("/api/v1/abbina", json={"lat": p["lat"], "lon": p["lon"]}, headers=con_chiave).json()
+    url = f"/api/v1/prove/{dati['id_prova']}/esito"
+    # un altro tester ha la chiave ma non il codice di questa prova
+    r = app.post(url, headers=con_chiave, json={"token": "x" * 22, "esito": "giusto"})
+    assert r.status_code == 403
+    assert app.post(url, headers=con_chiave, json={"esito": "giusto"}).status_code == 422
+    assert app.post(url, headers=con_chiave, json={"token": dati["token_esito"], "esito": "giusto"}).status_code == 200
+
+
+def test_numeri_fuori_dai_limiti_del_database(app, con_chiave):
+    p = _c1(app)
+    dati = app.post("/api/v1/abbina", json={"lat": p["lat"], "lon": p["lon"]}, headers=con_chiave).json()
+    corpo = {"token": dati["token_esito"], "esito": "giusto", "osm_way_scelto": 10**30}
+    assert app.post(f"/api/v1/prove/{dati['id_prova']}/esito", headers=con_chiave, json=corpo).status_code == 422
+    corpo["osm_way_scelto"] = None
+    assert app.post(f"/api/v1/prove/{10**30}/esito", headers=con_chiave, json=corpo).status_code == 422
+    assert app.post("/api/v1/prove/0/esito", headers=con_chiave, json=corpo).status_code == 422
 
 
 def test_origine_mappa_arriva_all_abbinamento(app, con_chiave):
@@ -96,7 +121,8 @@ def test_fuori_area(app, con_chiave):
 
 
 def test_esito_di_una_prova_che_non_c_e(app, con_chiave):
-    assert app.post("/api/v1/prove/999/esito", json={"esito": "giusto"}, headers=con_chiave).status_code == 404
+    corpo = {"token": "x" * 22, "esito": "giusto"}
+    assert app.post("/api/v1/prove/999/esito", json=corpo, headers=con_chiave).status_code == 404
 
 
 def test_validazione(app, con_chiave):
