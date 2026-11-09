@@ -1,0 +1,12 @@
+# Dependabot apre una pull request quando esce una versione nuova delle azioni della CI (fissate con l'hash del
+# commit, guida §13), una volta al mese.
+# Le librerie Python no: le versioni le blocca requirements.lock, preso dal container in produzione (guida §9).
+# Gli aggiornamenti di sicurezza (anche delle librerie Python nel lock) li apre Dependabot da solo quando GitHub segnala
+# una vulnerabilità (impostazioni del repository: Dependabot alerts e security updates attivi).
+# Le pull request si uniscono a mano: un merge su main va in produzione.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

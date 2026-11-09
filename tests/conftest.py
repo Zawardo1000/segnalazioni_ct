@@ -45,6 +45,8 @@ def database_url(_test_database) -> str:
 
 
 def impostazioni(database_url: str, tmp_path, **kw) -> Settings:
+    # niente cancellazione periodica delle prove nei test (la prova test_manutenzione.py)
+    kw.setdefault("conservazione_prove_giorni", 0)
     return Settings(database_url=database_url, chiave_accesso=CHIAVE, data_dir=tmp_path / "data",
                     log_dir=tmp_path / "logs", _env_file=None, **kw)
 

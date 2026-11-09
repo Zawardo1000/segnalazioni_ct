@@ -69,6 +69,8 @@ class Settings(BaseSettings):
 
     # conserva, per ogni prova, i dati letti dallo stradario: da lì si ricavano i casi di test
     salva_fonti: bool = True
+    # le prove contengono le posizioni di chi prova: si cancellano dopo questi giorni (0 = mai)
+    conservazione_prove_giorni: int = 365
     # limiti dell'API, oltre a quelli di nginx: abbinamenti al minuto per tutto il servizio, corpo delle richieste
     abbinamenti_al_minuto: int = 120
     max_corpo_bytes: int = 16 * 1024

@@ -7,6 +7,7 @@ Sul server: docker compose exec segnalazioni-ct python -m segnalazioni <comando>
   abbina LAT LON              abbinamento di un punto, in JSON, senza salvarlo
   prove                       ultime prove fatte con la pagina (--sbagliate: solo quelle segnate sbagliate)
   prova N                     una prova per intero; con --caso, come caso di test (tests/fixtures/casi/)
+  pulisci-prove               cancella subito le prove più vecchie di CONSERVAZIONE_PROVE_GIORNI (l'app lo fa ogni 6 ore)
 """
 
 import argparse
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prova", help="una prova per intero")
     p.add_argument("id", type=int)
     p.add_argument("--caso", action="store_true", help="come caso di test: punto, dati letti e risposta dell'utente")
+    sub.add_parser("pulisci-prove", help="cancella le prove più vecchie di CONSERVAZIONE_PROVE_GIORNI")
     args = parser.parse_args(argv)
 
     settings = _settings()
@@ -80,6 +82,15 @@ def main(argv: list[str] | None = None) -> int:
 
         from segnalazioni import abbinamento, stradario
         from segnalazioni.models import Prova
+
+        if args.comando == "pulisci-prove":
+            from segnalazioni.manutenzione import cancella_prove_vecchie
+
+            db.migrate()
+            with db.session() as s:
+                n = cancella_prove_vecchie(s, settings.conservazione_prove_giorni)
+            print(f"cancellate {n} prove più vecchie di {settings.conservazione_prove_giorni} giorni")
+            return 0
 
         with db.session() as s:
             if args.comando == "stato":

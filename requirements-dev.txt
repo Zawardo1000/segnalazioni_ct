@@ -1,3 +1,5 @@
 # versioni esatte: un rilascio nuovo non deve far diventare rossa la CI da solo (e fermare i deploy)
 pytest==9.1.1
 ruff==0.17.3
+# client HTTP del TestClient di Starlette (con httpx è deprecato)
+httpx2==2.16.0
