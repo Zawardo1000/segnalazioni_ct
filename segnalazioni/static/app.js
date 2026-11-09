@@ -103,16 +103,40 @@ function avviaGps() {
   );
 }
 
+// Posizione per l'abbinamento: subito se è recente e precisa; altrimenti si aspetta una posizione migliore (il
+// telefono dà prima quella di celle e Wi-Fi, ±100 m, poi quella dei satelliti) fino ad ATTESA_PRECISIONE_MS, e si usa
+// la migliore arrivata.
+const PRECISIONE_BUONA_M = 25;
+const ATTESA_PRECISIONE_MS = 12000;
+
 function doveSono() {
   const p = stato.posizione;
-  if (p && Date.now() - p.quando < POSIZIONE_FRESCA_MS) return abbina(p.lat, p.lon, p.precisione, "gps");
+  const fresca = p && Date.now() - p.quando < POSIZIONE_FRESCA_MS;
+  if (fresca && p.precisione <= PRECISIONE_BUONA_M) return abbina(p.lat, p.lon, p.precisione, "gps");
   if (!("geolocation" in navigator)) return messaggio("Questo browser non dà la posizione.", "errore");
-  messaggio("Cerco la posizione…");
-  navigator.geolocation.getCurrentPosition(
-    (pos) => abbina(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, "gps"),
-    (err) => messaggio(erroreGps(err), "errore"),
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
+  let migliore = fresca ? p : null;
+  let finito = false;
+  messaggio(migliore ? `Cerco una posizione più precisa (ora ±${Math.round(migliore.precisione)} m)…`
+    : "Cerco la posizione…");
+  const fine = () => {
+    if (finito) return;
+    finito = true;
+    clearTimeout(timer);
+    navigator.geolocation.clearWatch(id);
+    if (migliore) abbina(migliore.lat, migliore.lon, migliore.precisione, "gps");
+    else messaggio("GPS: posizione non disponibile. All'aperto va meglio.", "errore");
+  };
+  const id = navigator.geolocation.watchPosition(
+    (pos) => {
+      const q = { lat: pos.coords.latitude, lon: pos.coords.longitude, precisione: pos.coords.accuracy, quando: Date.now() };
+      if (!migliore || q.precisione < migliore.precisione) migliore = q;
+      if (migliore.precisione <= PRECISIONE_BUONA_M) return fine();
+      messaggio(`Cerco una posizione più precisa (ora ±${Math.round(migliore.precisione)} m)…`);
+    },
+    (err) => { if (err.code === 1) { finito = true; clearTimeout(timer); messaggio(erroreGps(err), "errore"); } },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: ATTESA_PRECISIONE_MS },
   );
+  const timer = setTimeout(fine, ATTESA_PRECISIONE_MS);
 }
 
 // --- abbinamento ------------------------------------------------------------------------------------------------
