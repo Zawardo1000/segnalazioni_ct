@@ -1,7 +1,7 @@
 "use strict";
-// Pagina di prova dell'abbinamento: posizione GPS (o punto scelto sulla mappa) → ente competente per la strada.
-// Solo Leaflet come libreria. I testi che arrivano da OSM (nomi, sigle, tag) sono dati non fidati: passano sempre da
-// textContent, mai da innerHTML.
+// Pagina principale: posizione GPS (o punto scelto sulla mappa) → ente competente per la strada, e segnalazione di una
+// carcassa o di rifiuti con una foto. Solo Leaflet come libreria (più comune.js). I testi che arrivano da OSM (nomi,
+// sigle, tag) sono dati non fidati: passano sempre da textContent, mai da innerHTML.
 
 const COLORI = {
   anas: "#c62828", cas: "#6a1b9a", provincia: "#1565c0", comune: "#2e7d32", regione: "#ef6c00",
@@ -11,32 +11,17 @@ const COLORE_ALTRO = "#616161";
 const TITOLI = { nessuna_strada: "Nessuna strada vicina", fuori_area: "Fuori dall'area coperta" };
 const ENTI_CORRETTI = ["ANAS", "Città metropolitana o provincia", "Comune", "CAS", "Privato", "Altro"];
 const POSIZIONE_FRESCA_MS = 15000;
+// foto: lato lungo e peso massimi dopo la ricodifica nel browser (il server accetta al massimo 1 MB)
+const FOTO_LATO = 1600;
+const FOTO_MAX_BYTES = 1000 * 1024;
 
 const stato = {
-  chiave: leggi("chiave"), posizione: null, risultato: null, scelta: null, mappa: null, livello: null, inCorso: false,
+  chiave: leggi("chiave"), posizione: null, risultato: null, scelta: null, sceltaFatta: false, mappa: null,
+  livello: null, inCorso: false, foto: null, tipo: "", nota: "", inviata: null,
 };
 
-function leggi(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } }
-function scrivi(k, v) { try { localStorage.setItem(k, v); } catch { /* memoria del browser non disponibile */ } }
-const $ = (id) => document.getElementById(id);
-
-function el(tag, attrs = {}, ...figli) {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === null || v === undefined || v === false) continue;
-    if (k === "class") e.className = v;
-    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
-    else e.setAttribute(k, v === true ? "" : String(v));
-  }
-  for (const f of figli.flat()) {
-    if (f === null || f === undefined || f === false) continue;
-    e.append(f instanceof Node ? f : document.createTextNode(String(f)));
-  }
-  return e;
-}
-
 function messaggio(testo, tipo = "info") {
-  $("stato").replaceChildren(testo ? el("p", { class: `msg ${tipo}` }, testo) : "");
+  sostituisci($("stato"), testo ? el("p", { class: `msg ${tipo}` }, testo) : "");
 }
 
 function colore(ente) { return (ente && COLORI[ente.codice]) || COLORE_ALTRO; }
@@ -140,8 +125,11 @@ async function abbina(lat, lon, precisione, origine) {
   messaggio(origine === "mappa" ? "Provo il punto scelto sulla mappa…" : "Cerco la strada…");
   try {
     const r = await chiama("/api/v1/abbina", { lat, lon, precisione_m: precisione, origine });
+    r.origine = origine;  // serve all'invio della segnalazione
     stato.risultato = r;
     stato.scelta = r.principale;
+    stato.sceltaFatta = false;
+    stato.inviata = null;
     messaggio("");
     mostra(r, true);
   } catch (e) {
@@ -166,7 +154,7 @@ function disegna(r, centra) {
     const scelta = c.osm_way === stato.scelta;
     L.polyline(c.geometria, { color: colore(c.ente), weight: scelta ? 9 : 5, opacity: scelta ? 0.9 : 0.55 })
       .addTo(g)
-      .on("click", () => { stato.scelta = c.osm_way; mostra(r, false); });
+      .on("click", () => { stato.scelta = c.osm_way; stato.sceltaFatta = true; mostra(r, false); });
   }
   for (const c of r.cartelli || []) {
     if (c.lat == null || c.lon == null) continue;
@@ -270,7 +258,7 @@ function sceltaCandidati(r) {
     campione.style.background = colore(c.ente);
     return el(
       "button", { type: "button", class: `candidato${c.osm_way === stato.scelta ? " scelto" : ""}`,
-        onclick: () => { stato.scelta = c.osm_way; mostra(r, false); } },
+        onclick: () => { stato.scelta = c.osm_way; stato.sceltaFatta = true; mostra(r, false); } },
       campione,
       el("span", { class: "testo" }, `${c.nome || c.ref || c.tipo}${c.ref && c.nome ? ` (${c.ref})` : ""}`,
         el("span", { class: "sotto" }, `${c.tipo} · ${c.distanza_m} m · ${c.ente.nome}`)),
@@ -317,8 +305,9 @@ function boxEsito(r) {
 function mostra(r, centra) {
   disegna(r, centra);
   const scelto = r.candidati.find((c) => c.osm_way === stato.scelta) || r.candidati[0];
-  $("risultato").replaceChildren(
+  sostituisci($("risultato"), 
     boxEnte(r),
+    boxSegnala(r),
     elenco("Perché", r.motivi),
     elenco("Dubbi", r.dubbi, "dubbi"),
     r.candidati.length > 1 ? sceltaCandidati(r) : null,
@@ -343,19 +332,199 @@ async function caricaStato() {
 
 // --- avvio ------------------------------------------------------------------------------------------------------
 
+// --- segnalazione -----------------------------------------------------------------------------------------------
+
+// Ricodifica la foto nel browser: JPEG, al massimo FOTO_LATO px e FOTO_MAX_BYTES. Così al server arriva sempre un JPEG
+// (anche dagli iPhone, che scattano in HEIC) e spariscono i dati EXIF (posizione, modello del telefono).
+async function preparaFoto(file) {
+  let sorgente;
+  try {
+    sorgente = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    sorgente = await new Promise((ok, ko) => {
+      const img = new Image();
+      img.onload = () => ok(img);
+      img.onerror = () => ko(new Error("formato"));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  const w = sorgente.width, h = sorgente.height;
+  if (!w || !h) throw new Error("formato");
+  let scala = Math.min(1, FOTO_LATO / Math.max(w, h));
+  for (let giro = 0; giro < 4; giro++) {
+    const c = document.createElement("canvas");
+    c.width = Math.round(w * scala);
+    c.height = Math.round(h * scala);
+    c.getContext("2d").drawImage(sorgente, 0, 0, c.width, c.height);
+    for (const q of [0.8, 0.7, 0.6]) {
+      const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", q));
+      if (blob && blob.size <= FOTO_MAX_BYTES) return blob;
+    }
+    scala *= 0.75;
+  }
+  throw new Error("troppo grande");
+}
+
+function boxSegnala(r) {
+  if (r.esito === "fuori_area") return null;
+  if (stato.inviata) return boxInviata(stato.inviata);
+  const anteprima = el("img", { class: "anteprima", alt: "Foto da inviare", hidden: !stato.foto });
+  if (stato.foto) anteprima.src = URL.createObjectURL(stato.foto);
+  const notaFoto = el("p", { class: "piccolo", "aria-live": "polite" });
+  const inputFoto = el("input", { type: "file", accept: "image/*", capture: "environment", class: "nascosto",
+    id: "foto" });
+  inputFoto.addEventListener("change", async () => {
+    const file = inputFoto.files && inputFoto.files[0];
+    if (!file) return;
+    notaFoto.textContent = "Preparo la foto…";
+    try {
+      stato.foto = await preparaFoto(file);
+      anteprima.src = URL.createObjectURL(stato.foto);
+      anteprima.hidden = false;
+      notaFoto.textContent = `Foto pronta (${Math.round(stato.foto.size / 1024)} KB).`;
+    } catch (e) {
+      stato.foto = null;
+      notaFoto.textContent = e.message === "formato"
+        ? "Questo telefono ha dato la foto in un formato che il browser non legge (HEIF?): imposta la fotocamera "
+          + "in JPEG («più compatibile») e riprova."
+        : "Foto non utilizzabile: riprova.";
+    }
+  });
+  const tipi = Object.entries(NOMI_TIPO).map(([v, testo]) => el("label", { class: "scelta-tipo" },
+    el("input", { type: "radio", name: "tipo", value: v, checked: stato.tipo === v,
+      onchange: () => { stato.tipo = v; } }), testo));
+  const nota = el("textarea", { rows: 2, maxlength: 500, placeholder: "Nota facoltativa (es. lato della strada, "
+    + "dimensioni)" });
+  nota.value = stato.nota;
+  nota.addEventListener("input", () => { stato.nota = nota.value; });
+  const esito = el("p", { class: "piccolo", "aria-live": "polite" });
+  const invia = el("button", { type: "button", class: "primario" }, "Invia segnalazione");
+  invia.addEventListener("click", () => inviaSegnalazione(r, invia, esito));
+  return el("section", { class: "blocco segnala" },
+    el("h2", {}, "Segnala qui"),
+    el("div", { class: "tipi" }, tipi),
+    el("label", { for: "foto", class: "bottone-foto" }, stato.foto ? "Rifai la foto" : "Scatta la foto"),
+    inputFoto, anteprima, notaFoto,
+    nota,
+    r.esito === "da_scegliere"
+      ? el("p", { class: "piccolo" }, "Qui vicino ci sono strade di enti diversi: tocca qui sotto quella su cui sei.")
+      : null,
+    invia, esito);
+}
+
+async function inviaSegnalazione(r, bottone, esito) {
+  if (!stato.tipo) { esito.textContent = "Scegli se è una carcassa o sono rifiuti."; return; }
+  if (!stato.foto) { esito.textContent = "Serve una foto."; return; }
+  if (r.esito === "da_scegliere" && !stato.sceltaFatta) {
+    esito.textContent = "Tocca la strada su cui sei (qui sotto o sulla mappa).";
+    return;
+  }
+  const p = r.punto;
+  const dati = {
+    lat: p.lat, lon: p.lon, precisione_m: p.precisione_m, origine: r.origine || "gps", tipo: stato.tipo,
+    nota: stato.nota.trim() || null, osm_way: r.candidati.length ? stato.scelta : null,
+    dispositivo: chiaveDispositivo(),
+  };
+  const corpo = new FormData();
+  corpo.append("dati", JSON.stringify(dati));
+  corpo.append("foto", stato.foto, "foto.jpg");
+  bottone.disabled = true;
+  esito.textContent = "Invio…";
+  try {
+    const risposta = await fetch("/api/v1/segnalazioni", {
+      method: "POST", headers: { "X-Chiave": stato.chiave }, body: corpo, cache: "no-store",
+    });
+    if (risposta.status === 401) { chiediChiave("Chiave di accesso mancante o sbagliata."); throw new Error("chiave"); }
+    const d = await leggiRisposta(risposta);
+    aggiungiMia(d.codice, d.token);
+    stato.inviata = d;
+    stato.foto = null;
+    stato.nota = "";
+    mostra(r, false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (e) {
+    bottone.disabled = false;
+    if (e.message !== "chiave") {
+      esito.textContent = navigator.onLine ? `Non inviata: ${e.message}` : "Senza rete: riprova quando c'è campo.";
+    }
+  }
+}
+
+function boxInviata(d) {
+  const condividi = navigator.share
+    ? el("button", { type: "button", onclick: () => navigator.share({ title: `Segnalazione ${d.codice}`, url: d.link })
+      .catch(() => {}) }, "Condividi")
+    : null;
+  const bottoneCopia = el("button", { type: "button" }, "Copia il link");
+  bottoneCopia.addEventListener("click", () => copia(d.link, bottoneCopia));
+  return el("section", { class: "blocco inviata" },
+    el("h2", {}, "Segnalazione inviata"),
+    el("p", { class: "nome-ente" }, d.codice),
+    el("p", {}, d.ente ? `Inviata a: ${d.ente}.` : `L'ente competente (${d.ente_calcolato || "non determinato"}) non `
+      + "usa ancora l'app: la smistiamo noi."),
+    el("p", {}, "Con questo link la segui (chi ha il link la vede: tienilo per te):"),
+    el("p", {}, el("a", { href: d.link }, d.link)),
+    el("div", { class: "riga-bottoni" }, bottoneCopia, condividi),
+    moduloEmail(d.codice, d.token, d.email_disponibili),
+    el("p", {}, el("button", { type: "button", onclick: () => { stato.inviata = null; mostra(stato.risultato, false); } },
+      "Un'altra segnalazione qui")));
+}
+
+// --- le mie segnalazioni ----------------------------------------------------------------------------------------
+
+async function mostraMie() {
+  const box = $("mie");
+  box.hidden = false;
+  sostituisci(box, el("h2", {}, "Le mie segnalazioni"), el("p", { class: "piccolo" }, "Carico…"));
+  let lista = [];
+  try {
+    const r = await fetch("/api/v1/mie", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dispositivo: chiaveDispositivo() }), cache: "no-store",
+    });
+    lista = (await leggiRisposta(r)).segnalazioni;
+  } catch (e) {
+    sostituisci(box, el("h2", {}, "Le mie segnalazioni"), el("p", { class: "msg errore" }, `Non riuscito: ${e.message}`));
+    return;
+  }
+  const recupero = `${location.origin}/#dispositivo=${chiaveDispositivo()}`;
+  const bottoneRecupero = el("button", { type: "button" }, "Copia il link di recupero");
+  bottoneRecupero.addEventListener("click", () => copia(recupero, bottoneRecupero));
+  sostituisci(box, 
+    el("h2", {}, "Le mie segnalazioni"),
+    lista.length ? el("ul", { class: "mie" }, lista.map((s) => {
+      const token = tokenDi(s.codice);
+      return el("li", {},
+        el("a", { href: `/s#${s.codice}${token ? `.${token}` : ""}` }, s.codice),
+        ` · ${NOMI_TIPO[s.tipo] || s.tipo} · ${NOMI_STATO[s.stato] || s.stato}`,
+        el("span", { class: "sotto" }, `${dataOra(s.creata)} · ${[s.strada, s.comune].filter(Boolean).join(", ")}`
+          + `${s.ente ? ` · ${s.ente}` : ""}`));
+    })) : el("p", {}, "Nessuna segnalazione da questo telefono."),
+    el("p", { class: "piccolo" }, "Le riconosciamo da un codice che resta su questo telefono. Per ritrovarle su un "
+      + "altro telefono (o se cancelli i dati del browser) apri il link di recupero: non darlo ad altri."),
+    bottoneRecupero,
+  );
+}
+
 // Link da condividere con la chiave nel frammento (…/#chiave=…): il frammento non arriva al server né nei log;
 // la chiave si salva sul telefono e sparisce dall'indirizzo.
-(function chiaveDalLink() {
+// anche il link di recupero delle segnalazioni (…/#dispositivo=…) porta la chiave del dispositivo su questo telefono.
+(function chiaviDalLink() {
+  let trovata = false;
   const m = /(?:^#|&)chiave=([^&]+)/.exec(location.hash);
-  if (!m) return;
-  try { stato.chiave = decodeURIComponent(m[1]); } catch { return; }
-  scrivi("chiave", stato.chiave);
-  history.replaceState(null, "", location.pathname + location.search);
+  if (m) {
+    try { stato.chiave = decodeURIComponent(m[1]); scrivi("chiave", stato.chiave); trovata = true; } catch { /* no */ }
+  }
+  const d = /(?:^#|&)dispositivo=([A-Za-z0-9_-]{32,64})(?:&|$)/.exec(location.hash);
+  if (d) { scrivi("dispositivo", d[1]); trovata = true; }
+  if (trovata) history.replaceState(null, "", location.pathname + location.search);
+  if (d) setTimeout(mostraMie, 0);
 })();
 
 iniziaMappa();
 avviaGps();
 $("dove").addEventListener("click", doveSono);
+$("apri-mie").addEventListener("click", mostraMie);
 if (!stato.chiave) chiediChiave();
 else caricaStato();
 if ("serviceWorker" in navigator) {

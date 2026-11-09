@@ -17,6 +17,10 @@ class RedactingFormatter(logging.Formatter):
         (re.compile(r"(?i)\b(api_?key|token|secret|password|chiave)=[^&\s'\"]+"), r"\1=<oscurato>"),
         # password negli URL dei database (postgresql+psycopg://utente:password@host)
         (re.compile(r"(://[^:/\s@]+:)[^@\s]+@"), r"\1<oscurato>@"),
+        # indirizzi email (chi chiede il link della segnalazione: non si salvano, quindi nemmeno nei log)
+        (re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+"), "<email>"),
+        # codici privati delle segnalazioni e chiavi del dispositivo, se finissero in un messaggio
+        (re.compile(r"(?i)(x-token:\s*|x-dispositivo:\s*)\S+"), r"\1<oscurato>"),
     ]
 
     def format(self, record: logging.LogRecord) -> str:

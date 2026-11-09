@@ -151,6 +151,9 @@ class Contesto:
         tags_regione = (intorno.get("regione") or {}).get("tags") or {}
         codice = _intero(str(tags_regione.get("ref:ISTAT") or ""))
         codice_comune = _intero(str((((intorno.get("comune") or {}).get("tags")) or {}).get("ref:ISTAT") or ""))
+        # codici Istat (comune a 6 cifre, regione) per collegare l'ente dell'abbinamento alla tabella enti (enti.py)
+        self.comune_istat = f"{codice_comune:06d}" if codice_comune is not None else None
+        self.regione_istat = codice
         istat = intorno.get("istat") or {}
         self.con_istat = codice is not None and codice in (istat.get("regioni") or [])
 
@@ -505,6 +508,8 @@ def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | No
     return {
         "punto": {"lat": lat, "lon": lon, "precisione_m": precisione_m},
         "comune": ctx.comune if ctx else None,
+        "comune_istat": ctx.comune_istat if ctx else None,
+        "regione_istat": ctx.regione_istat if ctx else None,
         "provincia": ctx.provincia if ctx else None,
         "sigla_provincia": ctx.sigla if ctx else None,
         "regione": ctx.regione if ctx else None,

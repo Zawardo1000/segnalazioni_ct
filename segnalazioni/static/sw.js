@@ -3,9 +3,10 @@
 // Prima la rete, poi la copia salvata: durante le prove si vede sempre l'ultima versione. L'API non passa mai dalla
 // cache (ogni abbinamento è nuovo), le tessere della mappa le gestisce il browser.
 
-const CACHE = "abbina-v1";
+const CACHE = "abbina-v2";
 const GUSCIO = [
   "/",
+  "/static/comune.js",
   "/static/app.js",
   "/static/style.css",
   "/static/vendor/leaflet/leaflet.js",

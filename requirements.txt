@@ -10,3 +10,9 @@ psycopg[binary]>=3.3.8
 geoalchemy2>=0.17.1
 httpx>=0.28.1
 tzdata>=2026.4
+# foto delle segnalazioni: controllo e ricodifica (pacchetti cp315 per aarch64 su PyPI)
+pillow>=13.0.0
+# moduli con file (la foto della segnalazione) in FastAPI; puro Python
+python-multipart>=0.0.20
+# verifica dei token di Keycloak (firma RS256) nel gestionale
+pyjwt[crypto]>=2.10.0

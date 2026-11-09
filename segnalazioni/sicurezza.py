@@ -17,14 +17,14 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 CSP = (
-    "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; script-src 'self'; style-src 'self'; "
+    "default-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; script-src 'self'; style-src 'self'; "
     "connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; "
     "form-action 'self'; frame-ancestors 'none'"
 )
 COMMON = {
     b"x-content-type-options": b"nosniff",
     b"referrer-policy": b"strict-origin-when-cross-origin",
-    b"permissions-policy": b"geolocation=(self), camera=(), microphone=()",
+    b"permissions-policy": b"geolocation=(self), camera=(self), microphone=()",
     b"content-security-policy": CSP.encode(),
     b"x-robots-tag": b"noindex, nofollow, noarchive",
 }
@@ -55,20 +55,25 @@ class _CorpoTroppoGrande(Exception):
 
 
 class LimiteCorpoMiddleware:
-    """Rifiuta con 413 i corpi delle richieste oltre max_bytes, dichiarati o letti, prima che arrivino all'app."""
+    """Rifiuta con 413 i corpi delle richieste oltre max_bytes, dichiarati o letti, prima che arrivino all'app.
 
-    def __init__(self, app: ASGIApp, max_bytes: int):
+    eccezioni: {(metodo, percorso): limite} per le poche richieste che portano un file (l'invio della foto).
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int, eccezioni: dict[tuple[str, str], int] | None = None):
         self.app = app
         self.max_bytes = max_bytes
+        self.eccezioni = eccezioni or {}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
+        massimo = self.eccezioni.get((scope.get("method", ""), scope.get("path", "")), self.max_bytes)
         troppo = JSONResponse({"detail": "richiesta troppo grande"}, status_code=413)
         for k, v in scope.get("headers", []):
             if k == b"content-length":
                 try:
-                    if int(v) > self.max_bytes:
+                    if int(v) > massimo:
                         return await troppo(scope, receive, send)
                 except ValueError:
                     return await JSONResponse({"detail": "Content-Length non valido"}, status_code=400)(
@@ -81,7 +86,7 @@ class LimiteCorpoMiddleware:
             msg = await receive()
             if msg["type"] == "http.request":
                 letti += len(msg.get("body", b""))
-                if letti > self.max_bytes:
+                if letti > massimo:
                     raise _CorpoTroppoGrande
             return msg
 

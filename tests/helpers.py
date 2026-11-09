@@ -56,11 +56,11 @@ def crea_stradario(engine: Engine, vie: list[dict], confini: list[dict]) -> None
         ))
 
 
-def confini_catania(lat: float, lon: float, comune: str = "Acireale") -> list[dict]:
+def confini_catania(lat: float, lon: float, comune: str = "Acireale", istat: str = "087004") -> list[dict]:
     """Comune (un quadrato di circa 1 km attorno al punto), Città metropolitana di Catania e Sicilia."""
     d = 0.005
     return [
-        {"relation_id": 39290, "admin_level": 8, "nome": comune, "tags": {"name": comune},
+        {"relation_id": 39290, "admin_level": 8, "nome": comune, "tags": {"name": comune, "ref:ISTAT": istat},
          "bbox": (lon - d, lat - d, lon + d, lat + d)},
         {"relation_id": 39181, "admin_level": 6, "nome": "Catania", "tags": {"name": "Catania", "ref": "CT"},
          "bbox": (lon - 1, lat - 1, lon + 1, lat + 1)},

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gestionale segnalazioni</title>
+  <meta name="theme-color" content="#0b3d6b">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="gestionale">
+  <header class="testata">
+    <h1>Gestionale</h1>
+    <span id="chi" class="gps"></span>
+    <button id="esci" type="button" class="esci" hidden>Esci</button>
+  </header>
+  <main class="largo">
+    <section id="stato" aria-live="polite"></section>
+    <div class="filtri" id="filtri" hidden>
+      <label>Stato
+        <select id="f-stato">
+          <option value="aperte">Aperte</option>
+          <option value="nuova">Nuove</option>
+          <option value="presa_in_carico">Prese in carico</option>
+          <option value="da_smistare">Da smistare</option>
+          <option value="chiusa">Chiuse</option>
+          <option value="">Tutte</option>
+        </select>
+      </label>
+      <label>Tipo
+        <select id="f-tipo">
+          <option value="">Tutti</option>
+          <option value="carcassa">Carcasse</option>
+          <option value="rifiuto">Rifiuti</option>
+        </select>
+      </label>
+      <button id="aggiorna" type="button">Aggiorna</button>
+    </div>
+    <div class="colonne">
+      <div>
+        <div id="mappa-gestione" role="application" aria-label="Mappa delle segnalazioni"></div>
+        <section id="elenco" class="blocco" hidden></section>
+      </div>
+      <section id="dettaglio" class="blocco" hidden></section>
+    </div>
+  </main>
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/comune.js"></script>
+  <script src="/static/gestione.js"></script>
+</body>
+</html>

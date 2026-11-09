@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Abbina strada</title>
-  <meta name="description" content="Prova dell'abbinamento tra una posizione e l'ente competente per la strada">
+  <title>Segnalazioni CT</title>
+  <meta name="description" content="Segnala carcasse di animali e rifiuti sulle strade all'ente competente (prototipo)">
   <meta name="theme-color" content="#0b3d6b">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
@@ -14,11 +14,13 @@
 </head>
 <body>
   <header class="testata">
-    <h1>Abbina strada</h1>
+    <h1>Segnalazioni CT</h1>
     <span id="gps" class="gps">GPS…</span>
   </header>
 
   <main>
+    <p class="avviso-112">Pericolo per chi passa? Chiama subito il <a href="tel:112">112</a>.</p>
+
     <form id="form-chiave" class="blocco" hidden>
       <label for="chiave">Chiave di accesso</label>
       <div class="riga-bottoni">
@@ -35,6 +37,9 @@
 
     <section id="stato" aria-live="polite"></section>
     <section id="risultato" hidden></section>
+
+    <p><button id="apri-mie" type="button">Le mie segnalazioni</button></p>
+    <section id="mie" class="blocco" hidden></section>
   </main>
 
   <footer class="piede">
@@ -43,6 +48,7 @@
   </footer>
 
   <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/comune.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

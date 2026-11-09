@@ -74,3 +74,41 @@ button.sbagliato-btn { background: var(--rosso); color: #fff; border: 0; }
 .sbagliato[hidden] { display: none; }
 a { color: var(--blu); }
 .piede { padding: 12px 16px 24px; padding-bottom: max(24px, env(safe-area-inset-bottom)); font-size: 13px; color: var(--fioco); text-align: center; }
+/* segnalazione */
+.avviso-112 { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: #fdecea; color: var(--rosso); font-weight: 600; }
+.avviso-112 a { color: var(--rosso); }
+.segnala { border: 2px solid var(--blu); display: grid; gap: 10px; }
+.tipi { display: grid; gap: 6px; }
+.scelta-tipo { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--bordo); border-radius: 10px; }
+.scelta-tipo input { width: auto; transform: scale(1.4); }
+.nascosto { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.bottone-foto {
+  display: block; text-align: center; min-height: 52px; line-height: 52px; border-radius: 10px;
+  background: var(--riquadro); border: 1px dashed var(--blu); color: var(--blu); font-weight: 600; cursor: pointer;
+}
+.anteprima { width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; background: #000; }
+.anteprima[hidden] { display: none; }
+.inviata { border: 2px solid var(--verde); }
+.email-link { display: grid; gap: 6px; margin-top: 12px; }
+ul.mie { margin: 0 0 10px; padding-left: 18px; }
+ul.mie li { margin: 8px 0; }
+ul.mie .sotto, .sotto { display: block; font-size: 14px; color: var(--fioco); }
+.storico { margin: 0; padding-left: 18px; }
+.storico li { margin: 6px 0; }
+.foto-segnalazione { width: 100%; border-radius: 10px; background: #000; }
+#mappa-piccola { height: 220px; border-radius: 12px; border: 1px solid var(--bordo); }
+/* gestionale */
+main.largo { max-width: 1200px; }
+.esci { min-height: 34px; padding: 4px 12px; background: rgba(255, 255, 255, .15); color: #fff; border: 1px solid rgba(255, 255, 255, .4); }
+.filtri { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 10px; }
+.filtri label { display: grid; gap: 4px; font-size: 14px; color: var(--fioco); min-width: 160px; }
+.filtri[hidden] { display: none; }
+.colonne { display: grid; gap: 14px; }
+@media (min-width: 900px) { .colonne { grid-template-columns: 1fr 1fr; align-items: start; } }
+#mappa-gestione { height: 40vh; min-height: 260px; border-radius: 12px; border: 1px solid var(--bordo); }
+.riga-seg { display: block; width: 100%; text-align: left; margin: 6px 0; }
+.riga-seg.scelta { outline: 3px solid var(--blu); }
+.etichetta-stato { display: inline-block; font-size: 13px; padding: 1px 8px; border-radius: 999px; background: var(--riquadro); border: 1px solid var(--bordo); }
+.azioni { display: grid; gap: 8px; margin-top: 10px; }
+.azione { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--bordo); border-radius: 10px; }
+.testata a.gps { color: #fff; text-decoration: none; }

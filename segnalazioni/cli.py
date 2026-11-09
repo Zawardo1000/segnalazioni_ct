@@ -7,6 +7,9 @@ Sul server: docker compose exec segnalazioni-ct python -m segnalazioni <comando>
   abbina LAT LON              abbinamento di un punto, in JSON, senza salvarlo (--caso: come caso di test)
   prove                       ultime prove fatte con la pagina (--sbagliate: solo quelle segnate sbagliate)
   prova N                     una prova per intero; con --caso, come caso di test (tests/fixtures/casi/)
+  crea-enti-prova             crea gli enti finti per le prove (enti.py: ANAS, Città metropolitana di Catania, ...)
+  enti                        enti che ricevono le segnalazioni (codice: per l'attributo degli utenti, ente:<codice>)
+  segnalazioni                ultime segnalazioni (-n N)
 """
 
 import argparse
@@ -51,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("prove", help="ultime prove fatte con la pagina")
     p.add_argument("--sbagliate", action="store_true", help="solo quelle segnate sbagliate")
     p.add_argument("-n", type=int, default=30, help="quante (predefinito 30)")
+    sub.add_parser("crea-enti-prova", help="crea gli enti finti per le prove")
+    sub.add_parser("enti", help="enti che ricevono le segnalazioni")
+    p = sub.add_parser("segnalazioni", help="ultime segnalazioni")
+    p.add_argument("-n", type=int, default=30, help="quante (predefinito 30)")
     p = sub.add_parser("prova", help="una prova per intero")
     p.add_argument("id", type=int)
     p.add_argument("--caso", action="store_true", help="come caso di test: punto, dati letti e risposta dell'utente")
@@ -82,7 +89,24 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         from segnalazioni import abbinamento, stradario
-        from segnalazioni.models import Prova
+        from segnalazioni.models import Ente, Prova, Segnalazione
+
+        if args.comando in ("crea-enti-prova", "enti", "segnalazioni"):
+            from segnalazioni import enti
+
+            db.migrate()
+            with db.session() as s:
+                if args.comando == "crea-enti-prova":
+                    creati = enti.crea_enti_prova(s)
+                    print("creati: " + (", ".join(creati) or "nessuno, c'erano già"))
+                elif args.comando == "enti":
+                    for e in s.scalars(select(Ente).order_by(Ente.codice)):
+                        print(f"{e.codice:<16} {'attivo' if e.attivo else 'spento':<7} {e.nome}")
+                else:
+                    for x in s.scalars(select(Segnalazione).order_by(Segnalazione.id.desc()).limit(args.n)):
+                        print(f"{x.codice}  {x.creata:%d/%m %H:%M}  {x.tipo:<8} {x.stato:<15} "
+                              f"{x.ente.codice if x.ente else '-':<14} {x.comune or ''}, {x.strada or ''}")
+            return 0
 
         with db.session() as s:
             if args.comando == "stato":

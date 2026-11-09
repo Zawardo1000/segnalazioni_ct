@@ -23,7 +23,7 @@ def test_health(app):
 
 def test_pagina_file_e_intestazioni(app):
     r = app.get("/")
-    assert r.status_code == 200 and "Abbina strada" in r.text
+    assert r.status_code == 200 and "Segnalazioni CT" in r.text
     csp = r.headers["content-security-policy"]
     assert "default-src 'self'" in csp and "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
     assert "object-src 'none'" in csp
@@ -32,7 +32,10 @@ def test_pagina_file_e_intestazioni(app):
     assert app.get("/manifest.webmanifest").headers["content-type"].startswith("application/manifest+json")
     assert app.get("/sw.js").status_code == 200
     # tutti i file che il service worker mette in cache all'installazione (se ne manca uno, non si installa)
-    for f in ("/static/app.js", "/static/style.css", "/static/vendor/leaflet/leaflet.js",
+    assert "blob:" in csp  # foto della segnalazione lette con fetch (header del codice privato)
+    assert app.get("/s").status_code == 200
+    for f in ("/static/app.js", "/static/comune.js", "/static/segnalazione.js", "/static/style.css",
+              "/static/vendor/leaflet/leaflet.js",
               "/static/vendor/leaflet/leaflet.css", "/static/icon.svg", "/static/icon-192.png", "/static/icon-512.png"):
         assert app.get(f).status_code == 200, f
     for f in ("/", "/sw.js", "/manifest.webmanifest", "/static/app.js", "/health"):
