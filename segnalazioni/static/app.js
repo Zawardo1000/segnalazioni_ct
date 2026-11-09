@@ -480,6 +480,9 @@ function boxSegnala(r) {
   const bottoneFoto = el("button", { type: "button", class: "bottone-foto" }, stato.foto ? "Rifai la foto" : "Scatta la foto");
   const pronta = (blob) => {
     stato.foto = blob;
+    // a foto caricata (l'anteprima cambia l'altezza della pagina) porta in vista il bottone di invio
+    anteprima.addEventListener("load", () => invia.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      { once: true });
     anteprima.src = URL.createObjectURL(blob);
     anteprima.hidden = false;
     bottoneFoto.textContent = "Rifai la foto";
