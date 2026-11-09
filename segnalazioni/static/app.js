@@ -168,6 +168,13 @@ function disegna(r, centra) {
       .addTo(g)
       .on("click", () => { stato.scelta = c.osm_way; mostra(r, false); });
   }
+  for (const c of r.cartelli || []) {
+    if (c.lat == null || c.lon == null) continue;
+    // cartello di centro abitato: quadratino bianco e rosso; il nome (dato OSM) come nodo di testo, mai HTML
+    L.circleMarker([c.lat, c.lon], { radius: 6, color: "#b3261e", weight: 3, fillColor: "#fff", fillOpacity: 1 })
+      .bindTooltip(el("span", {}, `Centro abitato: ${c.nome || "senza nome"}`))
+      .addTo(g);
+  }
   L.circleMarker([p.lat, p.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#0b3d6b", fillOpacity: 1 }).addTo(g);
   if (centra) stato.mappa.setView([p.lat, p.lon], Math.max(stato.mappa.getZoom(), 17));
 }
@@ -228,6 +235,10 @@ function luogo(r) {
     ["Provincia", r.provincia ? `${r.provincia}${r.sigla_provincia ? ` (${r.sigla_provincia})` : ""}` : "?"],
     ["Regione", r.regione || "?"],
     r.comuni_vicini && r.comuni_vicini.length ? ["Comuni vicini", r.comuni_vicini.join(", ")] : null,
+    r.localita && r.localita.length ? ["Località vicine", r.localita.map((l) =>
+      `${l.nome || "?"} (${l.popolazione ? `${l.popolazione.toLocaleString("it-IT")} ab., ` : ""}${l.distanza_m} m)`).join(", ")] : null,
+    r.cartelli && r.cartelli.length ? ["Cartelli di centro abitato", r.cartelli.map((c) =>
+      `${c.nome || "senza nome"} (${c.distanza_m} m)`).join(", ")] : null,
     ["Punto", `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}${p.precisione_m ? ` (±${Math.round(p.precisione_m)} m)` : ""}`],
     r.fonte && r.fonte.dati_del ? ["Dati OSM del", data(r.fonte.dati_del)] : null,
   ].filter(Boolean);

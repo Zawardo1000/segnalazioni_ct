@@ -39,6 +39,7 @@ SCHEMA = "osm"
 SCHEMA_IMPORT = "osm_import"
 RIUSA_SE_PIU_RECENTE_DI_S = 20 * 3600
 TIMEOUT_COMANDI_S = 4 * 3600
+TENTATIVI_DOWNLOAD = 6
 
 
 def _esegui(cmd: list[str], env: dict[str, str] | None = None) -> str:
@@ -63,22 +64,42 @@ def scarica(settings: Settings, url: str, cartella: Path) -> Path:
         r = c.get(url + ".md5")
         r.raise_for_status()
         atteso = r.text.split()[0].strip().lower()
-        h = hashlib.md5(usedforsecurity=False)
-        scaricati = 0
         log.info("scarico %s", url)
-        with c.stream("GET", url) as risposta:
-            risposta.raise_for_status()
-            with parziale.open("wb") as f:
-                for blocco in risposta.iter_bytes(1 << 20):
-                    f.write(blocco)
-                    h.update(blocco)
-                    scaricati += len(blocco)
+        _scarica_riprendendo(c, url, parziale)
+    h = hashlib.md5(usedforsecurity=False)
+    with parziale.open("rb") as f:
+        while blocco := f.read(1 << 20):
+            h.update(blocco)
     if h.hexdigest() != atteso:
         parziale.unlink(missing_ok=True)
         raise RuntimeError(f"impronta MD5 diversa da quella di Geofabrik per {url}")
     parziale.replace(dest)
-    log.info("scaricati %.1f MB, MD5 verificato", scaricati / 1e6)
+    log.info("scaricati %.1f MB, MD5 verificato", dest.stat().st_size / 1e6)
     return dest
+
+
+def _scarica_riprendendo(c: httpx.Client, url: str, parziale: Path) -> None:
+    """Scarica in `parziale`; se il trasferimento si blocca o cade, riprende da dove era arrivato (Range)."""
+    for tentativo in range(1, TENTATIVI_DOWNLOAD + 1):
+        gia = parziale.stat().st_size if parziale.exists() else 0
+        try:
+            with c.stream("GET", url, headers={"Range": f"bytes={gia}-"} if gia else {}) as risposta:
+                if gia and risposta.status_code == 416:  # il file parziale è già completo
+                    return
+                risposta.raise_for_status()
+                if gia and risposta.status_code != 206:  # il server ha ignorato Range: si ricomincia
+                    gia = 0
+                with parziale.open("ab" if gia else "wb") as f:
+                    for blocco in risposta.iter_bytes(1 << 20):
+                        f.write(blocco)
+            return
+        except httpx.TransportError as e:
+            if tentativo == TENTATIVI_DOWNLOAD:
+                raise RuntimeError(f"download di {url} non riuscito dopo {tentativo} tentativi: {e}") from e
+            arrivati = parziale.stat().st_size if parziale.exists() else 0
+            log.warning("download interrotto a %.1f MB (%s): riprendo (tentativo %d di %d)",
+                        arrivati / 1e6, e, tentativo + 1, TENTATIVI_DOWNLOAD)
+            time.sleep(min(30, 5 * tentativo))
 
 
 def data_dei_dati(file: Path) -> datetime | None:

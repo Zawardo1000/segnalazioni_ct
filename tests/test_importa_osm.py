@@ -35,9 +35,14 @@ def test_importa_ritaglia_e_si_legge(db, database_url, tmp_path):
     assert intorno["comune"]["nome"] == "Acireale"
     assert intorno["provincia"]["tags"]["ref"] == "CT"
     assert intorno["regione"]["nome"] == "Sicilia"
+    assert intorno["cartelli"][0]["nome"] == "Capomulini" and intorno["cartelli"][0]["distanza_m"] < 70
+    assert intorno["localita"][0]["tags"]["population"] == "1500"
     risultato = abbinamento.abbina(37.58, 15.1686, 5, intorno)
     assert risultato["principale"] == 200
     assert risultato["ente"]["nome"] == "ANAS – Struttura territoriale Sicilia"
+    # limite 50: possibile traversa, e l'app indica la frazione e il cartello più vicini
+    assert risultato["localita"][0]["popolazione"] == 1500
+    assert any("«Capomulini»" in d and "1.500 abitanti" in d for d in risultato["dubbi"])
     # ritagli e file intermedi cancellati, il file indicato a mano resta
     assert not list((tmp_path / "data" / "osm").glob("*.pbf"))
     assert MINI_OSM.exists()

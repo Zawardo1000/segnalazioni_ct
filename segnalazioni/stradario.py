@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from segnalazioni.abbinamento import RAGGIO_CONFINI_M, metri_per_grado
 
 SCHEMA = "osm"
+RAGGIO_CARTELLI_M = 500  # cartelli di inizio/fine centro abitato
+RAGGIO_LOCALITA_M = 2000  # località (place) con il nome e spesso la popolazione
 
 
 class StradarioMancante(RuntimeError):
@@ -119,5 +121,31 @@ def leggi_intorno(session: Session, lat: float, lon: float, raggio_m: int) -> di
         "provincia": confine(per_livello.get(6)),
         "regione": confine(per_livello.get(4)),
         "comuni_vicini": [n for n in vicini if n],
+        **_punti_vicini(session, lat, lon),
         "fonte": {"tipo": "stradario", "dati_del": st.get("dati_del"), "importato_il": st.get("importato_il")},
     }
+
+
+def _punti_vicini(session: Session, lat: float, lon: float) -> dict:
+    """Cartelli di centro abitato e località più vicini (tabella osm.punti; assente negli stradari più vecchi)."""
+    if session.scalar(text("SELECT to_regclass('osm.punti')")) is None:
+        return {"cartelli": [], "localita": []}
+    m_lat, m_lon = metri_per_grado(lat)
+    punto = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+    risultato = {}
+    for tipo, chiave, raggio, quanti in (("cartello", "cartelli", RAGGIO_CARTELLI_M, 4),
+                                         ("localita", "localita", RAGGIO_LOCALITA_M, 4)):
+        righe = session.execute(
+            text(
+                f"SELECT nome, tags, ST_Y(geom) AS lat, ST_X(geom) AS lon, "
+                f"ST_Distance(geom::geography, {punto}::geography) AS d FROM osm.punti "
+                f"WHERE tipo = :tipo AND geom && ST_Expand({punto}, :dx, :dy) "
+                f"AND ST_DWithin(geom::geography, {punto}::geography, :r) ORDER BY d LIMIT :n"
+            ),
+            {"lat": lat, "lon": lon, "tipo": tipo, "r": raggio, "dx": raggio / m_lon, "dy": raggio / m_lat, "n": quanti},
+        ).mappings().all()
+        risultato[chiave] = [
+            {"nome": r["nome"], "tags": r["tags"] or {}, "lat": r["lat"], "lon": r["lon"], "distanza_m": round(r["d"])}
+            for r in righe
+        ]
+    return risultato

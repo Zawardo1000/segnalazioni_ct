@@ -3,7 +3,8 @@
 # condiviso, con lo stesso PostGIS).
 #   docker compose up --build        avvia Postgres e il backend (Ctrl+C per fermarli)
 #   docker compose run --rm test     controllo del codice (ruff) e test (pytest), come la CI
-#   docker compose exec segnalazioni python -m segnalazioni importa-osm    stradario OSM (scarica circa 800 MB)
+#   docker compose run --rm importa  stradario OSM: scarica circa 800 MB, osmium usa fino a 4 GB di RAM per circa
+#                                    un minuto (memoria proporzionale agli identificativi OSM, non al file)
 #   http://127.0.0.1:8013/           pagina di prova dell'abbinamento (chiave di accesso sul PC: prova)
 #   http://127.0.0.1:8013/health     controllo di salute
 # Sul PC la geolocalizzazione del browser funziona solo da 127.0.0.1/localhost (serve HTTPS altrove): dal telefono
@@ -33,9 +34,9 @@ x-app: &app
     TEST_DATABASE_URL: postgresql+psycopg://segnalazioni:segnalazioni@postgres:5432/segnalazioni_test
     # chiave della pagina di prova sul PC (non segreta); sul server e' un segreto nel .env
     CHIAVE_ACCESSO: prova
-  # 1 GB come sul server: basta anche all'importazione dello stradario (osm2pgsql --slim)
-  mem_limit: 1g
-  cpus: "1"
+  # come timbro: l'app usa circa 160 MB; l'importazione dello stradario ha un servizio a parte (importa)
+  mem_limit: 512m
+  cpus: "0.5"
   pids_limit: 128
 
 services:
@@ -88,6 +89,24 @@ services:
       retries: 10
       start_period: 30s
       start_interval: 1s
+
+  # Solo con "docker compose run --rm importa": importazione dello stradario OSM, processo a parte con piu' memoria
+  # (osmium extract arriva a circa 4 GB per meno di un minuto; osm2pgsql in modalita' --slim ne usa poca).
+  importa:
+    <<: *app
+    profiles: [importa]
+    mem_limit: 5g
+    cpus: "1"
+    command: ["python", "-m", "segnalazioni", "importa-osm"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app:ro
+      - ./logs:/logs
+      - ./local-data:/data
+    tmpfs:
+      - /tmp:size=128m,mode=1777
 
   # Solo con "docker compose run --rm test": niente .env, i test non usano segreti ne' Internet
   # (la rete serve solo a scaricare pytest e ruff, in /tmp, ogni volta)

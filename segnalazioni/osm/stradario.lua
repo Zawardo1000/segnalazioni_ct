@@ -17,12 +17,38 @@ local vie = osm2pgsql.define_way_table('vie', {
     { column = 'geom', type = 'linestring', projection = 4326, not_null = true },
 }, { schema = schema })
 
+-- Cartelli di inizio/fine centro abitato (traffic_sign=city_limit) e localita' (place=*, spesso con la
+-- popolazione): servono a capire dove il Comune ha delimitato i centri abitati (art. 4 CdS), che e' cio' che
+-- decide le traverse interne. Istat invece fonde i centri contigui (Acireale = un solo centro da 48 mila).
+local punti = osm2pgsql.define_node_table('punti', {
+    { column = 'tipo', type = 'text', not_null = true },
+    { column = 'nome', type = 'text' },
+    { column = 'tags', type = 'jsonb' },
+    { column = 'geom', type = 'point', projection = 4326, not_null = true },
+}, { schema = schema })
+
+local localita = {
+    city = true, town = true, village = true, hamlet = true, suburb = true, quarter = true, neighbourhood = true,
+}
+
 local confini = osm2pgsql.define_relation_table('confini', {
     { column = 'admin_level', type = 'int2', not_null = true },
     { column = 'nome', type = 'text' },
     { column = 'tags', type = 'jsonb' },
     { column = 'geom', type = 'multipolygon', projection = 4326, not_null = true },
 }, { schema = schema })
+
+function osm2pgsql.process_node(object)
+    local t = object.tags
+    local segnali = (t.traffic_sign or '') .. ';' .. (t['traffic_sign:forward'] or '') .. ';'
+        .. (t['traffic_sign:backward'] or '')
+    if segnali:find('city_limit', 1, true) then
+        punti:insert({ tipo = 'cartello', nome = t.name, tags = t, geom = object:as_point() })
+    end
+    if t.place and localita[t.place] then
+        punti:insert({ tipo = 'localita', nome = t.name, tags = t, geom = object:as_point() })
+    end
+end
 
 function osm2pgsql.process_way(object)
     local hw = object.tags.highway

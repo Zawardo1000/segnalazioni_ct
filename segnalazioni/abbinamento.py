@@ -282,7 +282,23 @@ def _riassunto(d: float, via: dict) -> dict:
     }
 
 
-def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | None, fonte: dict | None) -> dict:
+def _punti(intorno: dict | None, chiave: str) -> list[dict]:
+    """Cartelli di centro abitato o località vicini, in breve (nome, distanza, popolazione, posizione)."""
+    uscita = []
+    for p in (intorno or {}).get(chiave) or []:
+        tags = p.get("tags") or {}
+        uscita.append({
+            "nome": p.get("nome") or tags.get("name"),
+            "distanza_m": p.get("distanza_m"),
+            "tipo": tags.get("place"),
+            "popolazione": _intero(tags.get("population")),
+            "lat": p.get("lat"),
+            "lon": p.get("lon"),
+        })
+    return uscita
+
+
+def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | None, intorno: dict | None) -> dict:
     return {
         "punto": {"lat": lat, "lon": lon, "precisione_m": precisione_m},
         "comune": ctx.comune if ctx else None,
@@ -290,7 +306,9 @@ def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | No
         "sigla_provincia": ctx.sigla if ctx else None,
         "regione": ctx.regione if ctx else None,
         "comuni_vicini": ctx.comuni_vicini if ctx else [],
-        "fonte": fonte,
+        "cartelli": _punti(intorno, "cartelli"),
+        "localita": _punti(intorno, "localita"),
+        "fonte": (intorno or {}).get("fonte"),
     }
 
 
@@ -312,7 +330,7 @@ def fuori_area(lat: float, lon: float, precisione_m: float | None, area: str) ->
 
 def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict) -> dict:
     ctx = Contesto(intorno)
-    base = _base(lat, lon, precisione_m, ctx, intorno.get("fonte"))
+    base = _base(lat, lon, precisione_m, ctx, intorno)
 
     misurate = []
     for via in intorno.get("vie") or []:
@@ -373,6 +391,19 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict) ->
 
     motivi = list(principale["motivi"])
     dubbi = list(principale["dubbi"])
+    if any("traversa interna" in d for d in principale["dubbi"]):
+        # per la traversa conta il centro abitato delimitato dal Comune: i cartelli e le frazioni di OSM ci si
+        # avvicinano più dei poligoni Istat, che fondono i centri contigui
+        indizi = []
+        if base["localita"]:
+            loc = base["localita"][0]
+            pop = f", {loc['popolazione']:,} abitanti secondo OSM".replace(",", ".") if loc["popolazione"] else ""
+            indizi.append(f"località più vicina «{loc['nome']}» a {loc['distanza_m']} m{pop}")
+        if base["cartelli"]:
+            cart = base["cartelli"][0]
+            indizi.append(f"cartello di centro abitato «{cart['nome']}» a {cart['distanza_m']} m")
+        if indizi:
+            dubbi.append("Per capire in quale centro abitato sei: " + "; ".join(indizi))
     livello = 2
     if da_scegliere:
         livello = 0

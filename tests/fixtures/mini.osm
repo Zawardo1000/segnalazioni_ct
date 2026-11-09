@@ -15,6 +15,15 @@
   <node id="13" version="1" lat="37.58" lon="15.175"/>
   <node id="14" version="1" lat="37.5801" lon="15.1684"/>
   <node id="15" version="1" lat="37.5802" lon="15.1687"/>
+  <node id="20" version="1" lat="37.5795" lon="15.1685">
+    <tag k="traffic_sign" v="city_limit"/>
+    <tag k="name" v="Capomulini"/>
+  </node>
+  <node id="21" version="1" lat="37.581" lon="15.170">
+    <tag k="place" v="village"/>
+    <tag k="name" v="Capomulini"/>
+    <tag k="population" v="1500"/>
+  </node>
   <way id="100" version="1">
     <nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/>
   </way>
