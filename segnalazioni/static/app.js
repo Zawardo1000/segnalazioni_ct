@@ -81,33 +81,42 @@ function erroreGps(err) {
   return "GPS: in attesa…";
 }
 
+const POSIZIONE_VECCHIA_MS = 20000;
+
 function aggiornaGps() {
   const p = stato.posizione;
   const g = $("gps");
-  g.textContent = `GPS ±${Math.round(p.precisione)} m`;
-  g.className = "gps " + (p.precisione <= 15 ? "bene" : p.precisione <= 40 ? "medio" : "male");
+  if (!p) return;
+  const vecchia = Date.now() - p.quando > POSIZIONE_VECCHIA_MS;
+  g.textContent = `GPS ±${Math.round(p.precisione)} m${vecchia ? " (vecchia)" : ""}`;
+  g.className = "gps " + (vecchia ? "male" : p.precisione <= 15 ? "bene" : p.precisione <= 40 ? "medio" : "male");
 }
 
+// GPS sempre acceso mentre la pagina è aperta. Firefox per Android può fermarlo quando la pagina va in secondo piano
+// e non riprenderlo: quando la pagina torna visibile si riparte da capo.
 function avviaGps() {
   if (!("geolocation" in navigator)) {
     $("gps").textContent = "GPS non disponibile";
     return;
   }
-  navigator.geolocation.watchPosition(
+  if (stato.idGps != null) navigator.geolocation.clearWatch(stato.idGps);
+  stato.idGps = navigator.geolocation.watchPosition(
     (p) => {
       stato.posizione = { lat: p.coords.latitude, lon: p.coords.longitude, precisione: p.coords.accuracy, quando: Date.now() };
       aggiornaGps();
     },
-    (err) => { $("gps").textContent = erroreGps(err); $("gps").className = "gps male"; },
+    (err) => { if (err.code === 1 || !stato.posizione) { $("gps").textContent = erroreGps(err); $("gps").className = "gps male"; } },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 },
   );
 }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") avviaGps(); });
+setInterval(aggiornaGps, 5000);
 
 // Posizione per l'abbinamento: subito se è recente e precisa; altrimenti si aspetta una posizione migliore (il
 // telefono dà prima quella di celle e Wi-Fi, ±100 m, poi quella dei satelliti) fino ad ATTESA_PRECISIONE_MS, e si usa
 // la migliore arrivata.
 const PRECISIONE_BUONA_M = 25;
-const ATTESA_PRECISIONE_MS = 12000;
+const ATTESA_PRECISIONE_MS = 30000;
 
 function doveSono() {
   const p = stato.posizione;
@@ -116,27 +125,45 @@ function doveSono() {
   if (!("geolocation" in navigator)) return messaggio("Questo browser non dà la posizione.", "errore");
   let migliore = fresca ? p : null;
   let finito = false;
-  messaggio(migliore ? `Cerco una posizione più precisa (ora ±${Math.round(migliore.precisione)} m)…`
-    : "Cerco la posizione…");
-  const fine = () => {
+  const inizio = Date.now();
+  // messaggio con il bottone per non aspettare oltre
+  const avanzamento = () => {
+    const passati = Math.round((Date.now() - inizio) / 1000);
+    sostituisci($("stato"), el("p", { class: "msg" },
+      migliore ? `Cerco una posizione più precisa: ora ±${Math.round(migliore.precisione)} m (${passati} s)… `
+        : `Cerco la posizione (${passati} s)… `,
+      migliore ? el("button", { type: "button", onclick: fine }, `Usa questa (±${Math.round(migliore.precisione)} m)`) : null));
+  };
+  function fine() {
     if (finito) return;
     finito = true;
     clearTimeout(timer);
+    clearInterval(orologio);
     navigator.geolocation.clearWatch(id);
     if (migliore) abbina(migliore.lat, migliore.lon, migliore.precisione, "gps");
-    else messaggio("GPS: posizione non disponibile. All'aperto va meglio.", "errore");
-  };
+    else messaggio("GPS: posizione non disponibile. All'aperto va meglio, oppure tieni premuto il punto sulla mappa.",
+      "errore");
+  }
   const id = navigator.geolocation.watchPosition(
     (pos) => {
       const q = { lat: pos.coords.latitude, lon: pos.coords.longitude, precisione: pos.coords.accuracy, quando: Date.now() };
       if (!migliore || q.precisione < migliore.precisione) migliore = q;
+      stato.posizione = q;
+      aggiornaGps();
       if (migliore.precisione <= PRECISIONE_BUONA_M) return fine();
-      messaggio(`Cerco una posizione più precisa (ora ±${Math.round(migliore.precisione)} m)…`);
+      avanzamento();
     },
-    (err) => { if (err.code === 1) { finito = true; clearTimeout(timer); messaggio(erroreGps(err), "errore"); } },
+    (err) => {
+      if (err.code === 1) {
+        finito = true; clearTimeout(timer); clearInterval(orologio); navigator.geolocation.clearWatch(id);
+        messaggio(erroreGps(err), "errore");
+      }
+    },
     { enableHighAccuracy: true, maximumAge: 0, timeout: ATTESA_PRECISIONE_MS },
   );
   const timer = setTimeout(fine, ATTESA_PRECISIONE_MS);
+  const orologio = setInterval(avanzamento, 1000);
+  avanzamento();
 }
 
 // --- abbinamento ------------------------------------------------------------------------------------------------
@@ -186,7 +213,14 @@ function disegna(r, centra) {
       .bindTooltip(el("span", {}, `Centro abitato: ${c.nome || "senza nome"}`))
       .addTo(g);
   }
-  L.circleMarker([p.lat, p.lon], { radius: 7, color: "#fff", weight: 2, fillColor: "#0b3d6b", fillOpacity: 1 }).addTo(g);
+  const segnaposto = L.marker([p.lat, p.lon], {
+    draggable: true, title: "Trascina sul punto esatto", keyboard: false,
+    icon: L.divIcon({ className: "segnaposto", iconSize: [26, 26], iconAnchor: [13, 13] }),
+  }).addTo(g);
+  segnaposto.on("dragend", () => {
+    const q = segnaposto.getLatLng();
+    abbina(q.lat, q.lng, 5, "mappa");
+  });
   if (centra) stato.mappa.setView([p.lat, p.lon], Math.max(stato.mappa.getZoom(), 17));
 }
 
@@ -476,6 +510,10 @@ function boxSegnala(r) {
     el("div", { class: "tipi" }, tipi),
     bottoneFoto, inputFoto, anteprima, notaFoto,
     nota,
+    r.origine === "gps" && r.punto.precisione_m > PRECISIONE_BUONA_M
+      ? el("p", { class: "msg errore" }, `Posizione poco precisa (±${Math.round(r.punto.precisione_m)} m): trascina il `
+        + "segnaposto blu sul punto esatto della mappa, o tieni premuto lì.")
+      : null,
     scelta ? el("p", { class: "strada-scelta" }, "Strada: ", el("strong", {}, scelta.nome || scelta.ref || scelta.tipo),
       ` → ${scelta.ente.nome}`) : null,
     r.esito === "da_scegliere"
