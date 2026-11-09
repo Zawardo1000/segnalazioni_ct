@@ -38,20 +38,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         campi = sorted({".".join(str(p) for p in e.get("loc", ())[1:]) or "corpo" for e in exc.errors()})
         return JSONResponse({"detail": "dati non validi", "campi": campi}, status_code=422)
 
-    @app.get("/health")
+    # GET e HEAD (nginx ammette entrambi; i file statici li accettano già)
+    @app.api_route("/health", methods=["GET", "HEAD"])
     def health() -> dict:
         return {"status": "ok"}
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     def pagina() -> FileResponse:
         return FileResponse(STATIC / "index.html", media_type="text/html; charset=utf-8")
 
     # dalla radice: il service worker controlla le pagine sotto il suo percorso
-    @app.get("/sw.js", include_in_schema=False)
+    @app.api_route("/sw.js", methods=["GET", "HEAD"], include_in_schema=False)
     def service_worker() -> FileResponse:
         return FileResponse(STATIC / "sw.js", media_type="text/javascript; charset=utf-8")
 
-    @app.get("/manifest.webmanifest", include_in_schema=False)
+    @app.api_route("/manifest.webmanifest", methods=["GET", "HEAD"], include_in_schema=False)
     def manifest() -> FileResponse:
         return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
 

@@ -34,6 +34,9 @@ def test_pagina_file_e_intestazioni(app):
     for f in ("/static/app.js", "/static/style.css", "/static/vendor/leaflet/leaflet.js",
               "/static/vendor/leaflet/leaflet.css", "/static/icon.svg", "/static/icon-192.png", "/static/icon-512.png"):
         assert app.get(f).status_code == 200, f
+    for f in ("/", "/sw.js", "/manifest.webmanifest", "/static/app.js", "/health"):
+        r = app.head(f)
+        assert r.status_code == 200 and "content-security-policy" in r.headers, f
     # niente documentazione automatica
     assert app.get("/docs").status_code == 404 and app.get("/openapi.json").status_code == 404
 
