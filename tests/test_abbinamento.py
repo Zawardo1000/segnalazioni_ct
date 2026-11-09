@@ -47,14 +47,23 @@ def test_c3_segrate_tracciati_paralleli():
     assert r["affidabilita"] == "bassa"
 
 
-def test_c4_segrate_ciclabile_va_chiesta():
+def test_c3_ciclabile_della_citta_metropolitana():
+    r = _abbina("c3-segrate-rivoltana")
+    ciclabile = next(c for c in r["candidati"] if c["osm_way"] == 904268227)
+    assert ciclabile["ente"]["nome"] == "Città metropolitana di Milano"
+
+
+def test_c4_segrate_ciclabile_del_percorso_cambio():
     r = _abbina("c4-segrate-ciclabile")
-    # l'utente era sulla ciclabile, 40 cm più lontana della rampa: l'app deve chiedere, non decidere
-    assert r["esito"] == "da_scegliere"
-    ids = {c["osm_way"] for c in r["candidati"]}
-    assert 904268227 in ids
-    nomi = {o["ente"]["nome"] for o in r["opzioni"]}
-    assert {"Città metropolitana di Milano", "Comune di Segrate"} <= nomi
+    # l'utente era sulla ciclabile "Cambio Linea 6": la gestisce la Città metropolitana (operator del percorso
+    # "Linea 6 Biciplan Cambio"), come la rampa e la provinciale accanto, quindi non c'è niente da scegliere
+    assert r["esito"] == "deciso"
+    assert r["ente"]["nome"] == "Città metropolitana di Milano"
+    ciclabile = next(c for c in r["candidati"] if c["osm_way"] == 904268227)
+    assert ciclabile["ente"] == {"codice": "provincia", "nome": "Città metropolitana di Milano"}
+    assert any("Linea 6 Biciplan Cambio" in m for m in ciclabile["motivi"])
+    # "Linea azzurra" non ha gestore: non conta
+    assert {p["nome"] for p in ciclabile["percorsi"]} == {"Linea 6 Biciplan Cambio", "Linea azzurra"}
 
 
 CTX_CT = Contesto({"comune": {"nome": "Catania"}, "provincia": {"nome": "Catania", "tags": {"ref": "CT"}},
@@ -91,6 +100,51 @@ def test_nome_della_provincia(provincia, sigla, atteso):
     tags = {"ISO3166-2": f"IT-{sigla}"} if sigla else {}
     ctx = Contesto({"comune": {"nome": "X"}, "provincia": {"nome": provincia, "tags": tags}})
     assert valuta_via({"highway": "secondary", "ref": "SP 3"}, ctx)["ente"]["nome"] == atteso
+
+
+CTX_MI = Contesto({"comune": {"nome": "Segrate"}, "provincia": {"nome": "Milano", "tags": {"ISO3166-2": "IT-MI"}},
+                   "regione": {"nome": "Lombardia"}})
+
+
+@pytest.mark.parametrize(
+    "gestore, atteso",
+    [
+        ("Città Metropolitana di Milano", ("provincia", "Città metropolitana di Milano")),  # come le SP: stesso ente
+        ("Citta metropolitana di Milano", ("provincia", "Città metropolitana di Milano")),
+        ("Città Metropolitana di Bergamo", ("provincia", "Città metropolitana di Bergamo")),
+        ("Comune di Segrate", ("comune", "Comune di Segrate")),
+        ("Comune di Cremona", ("comune", "Comune di Cremona")),
+        ("ANAS S.p.A.", ("anas", "ANAS – Struttura territoriale Lombardia")),
+        ("Regione Lombardia", ("regione", "Regione Lombardia")),
+        ("Consorzio Pro Loco Valle di Ledro", None),
+        ("Stiftung SchweizMobil", None),
+        ("http://www.provincia.modena.it/", None),
+    ],
+)
+def test_ente_da_gestore(gestore, atteso):
+    from segnalazioni.abbinamento import ente_da_gestore
+
+    ente = ente_da_gestore(gestore, CTX_MI)
+    assert (None if ente is None else (ente["codice"], ente["nome"])) == atteso
+
+
+def test_gestore_sul_tratto_e_sul_percorso():
+    ciclabile = {"highway": "cycleway", "name": "Ciclabile"}
+    # nessun gestore: Comune, con il dubbio
+    v = valuta_via(ciclabile, CTX_MI)
+    assert v["ente"]["nome"] == "Comune di Segrate" and v["dubbi"]
+    # gestore del percorso: ente pubblico, si usa
+    percorso = [{"tipo": "bicycle", "nome": "Linea 6 Biciplan Cambio", "tags": {"operator": "Città Metropolitana di Milano"}}]
+    v = valuta_via(ciclabile, CTX_MI, percorso)
+    assert v["ente"]["nome"] == "Città metropolitana di Milano" and not v["dubbi"]
+    # gestore del percorso non pubblico: resta il Comune, con una nota
+    pro_loco = [{"tipo": "bicycle", "nome": "Giro del lago", "tags": {"operator": "Pro Loco di Segrate"}}]
+    v = valuta_via(ciclabile, CTX_MI, pro_loco)
+    assert v["ente"]["nome"] == "Comune di Segrate"
+    assert any("Pro Loco di Segrate" in m and "non è un ente" in m for m in v["motivi"])
+    # gestore sul tratto: vince sul percorso, anche se non è un ente pubblico
+    v = valuta_via({**ciclabile, "operator": "Parco Nord Milano"}, CTX_MI, percorso)
+    assert v["ente"] == {"codice": "altro", "nome": "Parco Nord Milano"}
 
 
 def test_ex_sigla_e_strada_privata():

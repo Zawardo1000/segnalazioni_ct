@@ -313,7 +313,8 @@
       45.4629542,
       9.2863929
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 400070853,
@@ -339,7 +340,8 @@
       45.4760995,
       9.2916683
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205702,
@@ -510,7 +512,8 @@
       45.4751216,
       9.2956511
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205710,
@@ -583,7 +586,8 @@
       45.4759155,
       9.2910218
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205729,
@@ -666,7 +670,8 @@
       45.4752548,
       9.2886068
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205731,
@@ -734,7 +739,8 @@
       45.4763183,
       9.2912628
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205735,
@@ -795,7 +801,8 @@
       45.4761369,
       9.2911689
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 580246578,
@@ -937,7 +944,8 @@
       45.4753203,
       9.2885902
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 625308450,
@@ -1053,7 +1061,8 @@
       45.4752548,
       9.2886068
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 663553241,
@@ -1155,7 +1164,8 @@
       45.4771503,
       9.3000421
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 904268227,
@@ -1343,6 +1353,42 @@
       45.4763084,
       9.2951171
      ]
+    ],
+    "percorsi": [
+     {
+      "tipo": "bicycle",
+      "nome": "Linea 6 Biciplan Cambio",
+      "tags": {
+       "colour": "#E36386",
+       "cycle_network": "IT:MI:Cambio",
+       "from": "Milano",
+       "name": "Linea 6 Biciplan Cambio",
+       "network": "lcn",
+       "note": "Previsto prolungamento fino a Caravaggio",
+       "operator": "Città Metropolitana di Milano",
+       "ref": "L6",
+       "route": "bicycle",
+       "to": "Idroscalo",
+       "type": "route",
+       "website": "https://www.cittametropolitana.mi.it/cambiobiciplan/it/linee-e-percorsi/linea/Linea-6/"
+      }
+     },
+     {
+      "tipo": "bicycle",
+      "nome": "Linea azzurra",
+      "tags": {
+       "colour": "#1fc3ff",
+       "cycle_network": "Ciclopolitana Segrate",
+       "from": "San Felice",
+       "name": "Linea azzurra",
+       "network": "lcn",
+       "ref": "6",
+       "route": "bicycle",
+       "source": "www.comune.segrate.mi.it/export/sites/segrate/img/novita/ciclopolitana.jpg",
+       "to": "Aeroporto",
+       "type": "route"
+      }
+     }
     ]
    },
    {
@@ -1376,7 +1422,8 @@
       45.4759707,
       9.2921335
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 904268230,
@@ -1425,7 +1472,8 @@
       45.4759155,
       9.2910218
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 1079939152,
@@ -1456,7 +1504,8 @@
       45.476383,
       9.2911818
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 1181321931,
@@ -1477,7 +1526,8 @@
       45.4757767,
       9.2879213
      ]
-    ]
+    ],
+    "percorsi": []
    }
   ],
   "comune": {
@@ -1509,7 +1559,7 @@
   "fonte": {
    "tipo": "overpass+nominatim",
    "overpass": "https://overpass.openstreetmap.fr/api/interpreter",
-   "letto_il": "2026-11-09T10:24:00+00:00"
+   "letto_il": "2026-11-09T11:35:26+00:00"
   }
  }
 }

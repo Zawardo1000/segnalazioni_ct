@@ -34,7 +34,8 @@ def _json(url: str, dati: bytes | None = None) -> dict:
 def overpass(lat: float, lon: float) -> tuple[dict, str]:
     q = (
         f"[out:json][timeout:50];"
-        f'way(around:{RAGGIO_VIE_M},{lat},{lon})["highway"];out tags geom;'
+        f'way(around:{RAGGIO_VIE_M},{lat},{lon})["highway"]->.w;.w out tags geom;'
+        f'rel(bw.w)["type"="route"]["route"~"^(bicycle|mtb)$"];out body;'
         f'rel(around:{RAGGIO_CONFINI_M},{lat},{lon})["boundary"="administrative"]["admin_level"="8"];out tags;'
     )
     for url in OVERPASS:
@@ -61,12 +62,22 @@ def intorno(lat: float, lon: float) -> dict:
         "nome": nom.get("name"),
         "tags": nom.get("extratags") or {},
     }
+    # percorsi ciclabili per strada, come la tabella osm.percorsi dello stradario
+    percorsi: dict[int, list[dict]] = {}
+    for e in ov["elements"]:
+        t = e.get("tags") or {}
+        if e["type"] == "relation" and t.get("type") == "route":
+            for m in e.get("members", []):
+                if m["type"] == "way":
+                    percorsi.setdefault(m["ref"], []).append({"tipo": t.get("route"), "nome": t.get("name"), "tags": t})
     vie = [
-        {"osm_way": e["id"], "tags": e.get("tags") or {}, "geometria": [[g["lat"], g["lon"]] for g in e.get("geometry", [])]}
+        {"osm_way": e["id"], "tags": e.get("tags") or {}, "geometria": [[g["lat"], g["lon"]] for g in e.get("geometry", [])],
+         "percorsi": percorsi.get(e["id"], [])}
         for e in ov["elements"]
         if e["type"] == "way"
     ]
-    vicini = sorted({(e.get("tags") or {}).get("name") for e in ov["elements"] if e["type"] == "relation"} - {None})
+    vicini = sorted({(e.get("tags") or {}).get("name") for e in ov["elements"]
+                     if e["type"] == "relation" and (e.get("tags") or {}).get("boundary") == "administrative"} - {None})
     return {
         "vie": sorted(vie, key=lambda v: v["osm_way"]),
         "comune": comune,

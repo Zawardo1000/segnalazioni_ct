@@ -25,7 +25,7 @@ def _settings(database_url, tmp_path):
 
 def test_importa_ritaglia_e_si_legge(db, database_url, tmp_path):
     r = importa_osm.esegui(_settings(database_url, tmp_path), file=MINI_OSM)
-    assert (r["vie"], r["comuni"]) == (2, 2)  # la strada in costruzione resta fuori
+    assert (r["vie"], r["comuni"]) == (3, 2)  # la strada in costruzione resta fuori
     with db.session() as s:
         st = stradario.stato(s)
         intorno = stradario.leggi_intorno(s, 37.58, 15.1686, 100)
@@ -43,6 +43,13 @@ def test_importa_ritaglia_e_si_legge(db, database_url, tmp_path):
     # limite 50: possibile traversa, e l'app indica la frazione e il cartello più vicini
     assert risultato["localita"][0]["popolazione"] == 1500
     assert any("«Capomulini»" in d and "1.500 abitanti" in d for d in risultato["dubbi"])
+    # ciclabile del percorso con gestore: la Città metropolitana, non il Comune
+    with db.session() as s:
+        vicino = stradario.leggi_intorno(s, 37.587, 15.1761, 100)
+    ciclabile = next(v for v in vicino["vie"] if v["osm_way"] == 203)
+    assert ciclabile["percorsi"][0]["nome"] == "Percorso di prova"
+    r2 = abbinamento.abbina(37.587, 15.1761, 5, vicino)
+    assert r2["ente"]["nome"] == "Città metropolitana di Catania"
     # ritagli e file intermedi cancellati, il file indicato a mano resta
     assert not list((tmp_path / "data" / "osm").glob("*.pbf"))
     assert MINI_OSM.exists()
@@ -53,7 +60,7 @@ def test_nuova_importazione_sostituisce_la_vecchia(db, database_url, tmp_path):
     importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
     importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
     with db.engine.connect() as c:
-        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 2
+        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 3
         assert c.scalar(text("SELECT count(*) FROM osm.importazione")) == 1
         assert c.scalar(text("SELECT to_regnamespace('osm_import')")) is None
 
@@ -66,4 +73,4 @@ def test_importazione_vuota_lascia_lo_stradario_di_prima(db, database_url, tmp_p
     with pytest.raises(RuntimeError, match="importazione vuota"):
         importa_osm.esegui(s, file=vuoto, ritaglio=False)
     with db.engine.connect() as c:
-        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 2
+        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 3

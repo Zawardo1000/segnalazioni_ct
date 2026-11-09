@@ -115,8 +115,13 @@ def leggi_intorno(session: Session, lat: float, lon: float, raggio_m: int) -> di
         return {"osm_relation": c["relation_id"], "nome": c["nome"], "tags": c["tags"] or {}}
 
     st = stato(session) or {}
+    per_via = _percorsi(session, [v["way_id"] for v in vie])
     return {
-        "vie": [{"osm_way": v["way_id"], "tags": v["tags"] or {}, "geometria": _linea(v["geojson"])} for v in vie],
+        "vie": [
+            {"osm_way": v["way_id"], "tags": v["tags"] or {}, "geometria": _linea(v["geojson"]),
+             "percorsi": per_via.get(v["way_id"], [])}
+            for v in vie
+        ],
         "comune": confine(comune),
         "provincia": confine(per_livello.get(6)),
         "regione": confine(per_livello.get(4)),
@@ -124,6 +129,21 @@ def leggi_intorno(session: Session, lat: float, lon: float, raggio_m: int) -> di
         **_punti_vicini(session, lat, lon),
         "fonte": {"tipo": "stradario", "dati_del": st.get("dati_del"), "importato_il": st.get("importato_il")},
     }
+
+
+def _percorsi(session: Session, way_ids: list[int]) -> dict[int, list[dict]]:
+    """Percorsi ciclabili (relazioni OSM) di cui fanno parte le strade (tabella osm.percorsi; assente negli stradari
+    più vecchi): {way_id: [{"tipo", "nome", "tags"}]}."""
+    if not way_ids or session.scalar(text("SELECT to_regclass('osm.percorsi')")) is None:
+        return {}
+    uscita: dict[int, list[dict]] = {}
+    righe = session.execute(
+        text("SELECT way_id, tipo, nome, tags FROM osm.percorsi WHERE way_id = ANY(:ids) ORDER BY relation_id"),
+        {"ids": way_ids},
+    ).mappings()
+    for r in righe:
+        uscita.setdefault(r["way_id"], []).append({"tipo": r["tipo"], "nome": r["nome"], "tags": r["tags"] or {}})
+    return uscita
 
 
 def _punti_vicini(session: Session, lat: float, lon: float) -> dict:

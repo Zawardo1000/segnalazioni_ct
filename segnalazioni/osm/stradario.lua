@@ -31,6 +31,16 @@ local localita = {
     city = true, town = true, village = true, hamlet = true, suburb = true, quarter = true, neighbourhood = true,
 }
 
+-- Percorsi ciclabili (relazioni type=route, route=bicycle|mtb): una riga per ogni strada del percorso, con i tag del
+-- percorso. Il loro operator (es. "Linea 6 Biciplan Cambio" -> Citta' Metropolitana di Milano) dice chi gestisce le
+-- ciclabili che in OSM non hanno un gestore sul tratto.
+local percorsi = osm2pgsql.define_relation_table('percorsi', {
+    { column = 'way_id', type = 'int8', not_null = true },
+    { column = 'tipo', type = 'text' },
+    { column = 'nome', type = 'text' },
+    { column = 'tags', type = 'jsonb' },
+}, { schema = schema, indexes = { { column = 'way_id', method = 'btree' } } })
+
 local confini = osm2pgsql.define_relation_table('confini', {
     { column = 'admin_level', type = 'int2', not_null = true },
     { column = 'nome', type = 'text' },
@@ -60,6 +70,14 @@ end
 
 function osm2pgsql.process_relation(object)
     local t = object.tags
+    if t.type == 'route' and (t.route == 'bicycle' or t.route == 'mtb') then
+        for _, m in ipairs(object.members) do
+            if m.type == 'w' then
+                percorsi:insert({ way_id = m.ref, tipo = t.route, nome = t.name, tags = t })
+            end
+        end
+        return
+    end
     if t.boundary ~= 'administrative' then
         return
     end

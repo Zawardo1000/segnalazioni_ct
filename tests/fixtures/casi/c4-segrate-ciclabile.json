@@ -1,6 +1,6 @@
 {
  "nome": "c4-segrate-ciclabile",
- "descrizione": "Segrate (MI): l'utente era esattamente sulla ciclabile Cambio Linea 6, a 40 cm di differenza dalla rampa SP15bis",
+ "descrizione": "Segrate (MI): l'utente era esattamente sulla ciclabile Cambio Linea 6 (percorso della Citta' metropolitana di Milano: ente giusto secondo l'utente), a 40 cm di differenza dalla rampa SP15bis",
  "punto": {
   "lat": 45.4762745,
   "lon": 9.2925577,
@@ -313,7 +313,8 @@
       45.4629542,
       9.2863929
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 178626479,
@@ -334,7 +335,8 @@
       45.4764424,
       9.2939084
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 178775479,
@@ -350,7 +352,8 @@
       45.4753498,
       9.2937221
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 178775482,
@@ -395,7 +398,8 @@
       45.4746115,
       9.2935579
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 400070853,
@@ -421,7 +425,8 @@
       45.4760995,
       9.2916683
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205702,
@@ -592,7 +597,8 @@
       45.4751216,
       9.2956511
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205710,
@@ -665,7 +671,8 @@
       45.4759155,
       9.2910218
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205729,
@@ -748,7 +755,8 @@
       45.4752548,
       9.2886068
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205731,
@@ -816,7 +824,8 @@
       45.4763183,
       9.2912628
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205735,
@@ -877,7 +886,8 @@
       45.4761369,
       9.2911689
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205740,
@@ -942,7 +952,8 @@
       45.4767665,
       9.294215
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426205752,
@@ -1006,7 +1017,8 @@
       45.4767174,
       9.2934347
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 426639537,
@@ -1041,7 +1053,8 @@
       45.4767174,
       9.2934347
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 459026657,
@@ -1112,7 +1125,8 @@
       45.4761321,
       9.2934608
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 580246578,
@@ -1254,7 +1268,8 @@
       45.4753203,
       9.2885902
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 625308450,
@@ -1370,7 +1385,8 @@
       45.4752548,
       9.2886068
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 663553241,
@@ -1472,7 +1488,8 @@
       45.4771503,
       9.3000421
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 904268227,
@@ -1660,6 +1677,42 @@
       45.4763084,
       9.2951171
      ]
+    ],
+    "percorsi": [
+     {
+      "tipo": "bicycle",
+      "nome": "Linea 6 Biciplan Cambio",
+      "tags": {
+       "colour": "#E36386",
+       "cycle_network": "IT:MI:Cambio",
+       "from": "Milano",
+       "name": "Linea 6 Biciplan Cambio",
+       "network": "lcn",
+       "note": "Previsto prolungamento fino a Caravaggio",
+       "operator": "Città Metropolitana di Milano",
+       "ref": "L6",
+       "route": "bicycle",
+       "to": "Idroscalo",
+       "type": "route",
+       "website": "https://www.cittametropolitana.mi.it/cambiobiciplan/it/linee-e-percorsi/linea/Linea-6/"
+      }
+     },
+     {
+      "tipo": "bicycle",
+      "nome": "Linea azzurra",
+      "tags": {
+       "colour": "#1fc3ff",
+       "cycle_network": "Ciclopolitana Segrate",
+       "from": "San Felice",
+       "name": "Linea azzurra",
+       "network": "lcn",
+       "ref": "6",
+       "route": "bicycle",
+       "source": "www.comune.segrate.mi.it/export/sites/segrate/img/novita/ciclopolitana.jpg",
+       "to": "Aeroporto",
+       "type": "route"
+      }
+     }
     ]
    },
    {
@@ -1693,7 +1746,8 @@
       45.4759707,
       9.2921335
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 904268230,
@@ -1742,7 +1796,8 @@
       45.4759155,
       9.2910218
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 1079939152,
@@ -1773,7 +1828,8 @@
       45.476383,
       9.2911818
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 1181321931,
@@ -1794,7 +1850,8 @@
       45.4757767,
       9.2879213
      ]
-    ]
+    ],
+    "percorsi": []
    },
    {
     "osm_way": 1418934171,
@@ -1814,7 +1871,8 @@
       45.475911,
       9.2938575
      ]
-    ]
+    ],
+    "percorsi": []
    }
   ],
   "comune": {
@@ -1839,14 +1897,12 @@
     "ISO3166-2": "IT-MI"
    }
   },
-  "regione": {
-   "nome": "Lombardia"
-  },
+  "regione": null,
   "comuni_vicini": [],
   "fonte": {
    "tipo": "overpass+nominatim",
    "overpass": "https://overpass.openstreetmap.fr/api/interpreter",
-   "letto_il": "2026-11-09T10:24:05+00:00"
+   "letto_il": "2026-11-09T11:35:31+00:00"
   }
  }
 }

@@ -213,6 +213,8 @@ function dettagliVia(c) {
     ["Tipo", c.tipo || c.highway],
     ["Distanza", `${c.distanza_m} m`],
     c.tags.operator ? ["Gestore (OSM)", c.tags.operator] : null,
+    c.percorsi && c.percorsi.length ? ["Percorso ciclabile", c.percorsi.map((p) =>
+      `${p.nome || "senza nome"}${p.gestore ? ` (gestore: ${p.gestore})` : ""}`).join("; ")] : null,
     c.tags.maxspeed ? ["Limite", `${c.tags.maxspeed} km/h`] : null,
     c.tags["name:left"] ? ["Lato sinistro", c.tags["name:left"]] : null,
     c.tags["name:right"] ? ["Lato destro", c.tags["name:right"]] : null,

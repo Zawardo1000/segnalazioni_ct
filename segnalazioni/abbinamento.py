@@ -161,6 +161,39 @@ def ente_comune(ctx: Contesto) -> dict:
     return {"codice": "comune", "nome": f"Comune di {ctx.comune}" if ctx.comune else "Comune (non determinato)"}
 
 
+def _pulisci(nome: str) -> str:
+    """Spazi normalizzati e "Città Metropolitana" / "Citta metropolitana" scritti in un modo solo."""
+    nome = re.sub(r"\s+", " ", nome.replace(" ", " ")).strip()
+    return re.sub(r"(?i)^citt[àa]\s+metropolitana", "Città metropolitana", nome)
+
+
+def ente_da_gestore(gestore: str, ctx: Contesto) -> dict | None:
+    """L'ente indicato da un `operator` di OSM, se è un ente pubblico riconoscibile; altrimenti None.
+
+    Gli enti della zona del punto tornano nella forma usata per le sigle (stesso nome, stesso gruppo): la ciclabile
+    della Città metropolitana e la provinciale accanto risultano lo stesso ente.
+    """
+    nome = _pulisci(gestore or "")
+    basso = nome.lower()
+    if not nome:
+        return None
+    if re.search(r"\banas\b", basso):
+        return ente_anas(ctx)
+    if "autostrade siciliane" in basso or basso == "cas":
+        return ente_cas()
+    if basso.startswith(("città metropolitana", "provincia ", "libero consorzio")):
+        if ctx.provincia and basso.endswith(ctx.provincia.lower()):
+            return ente_provincia(ctx)
+        return {"codice": "provincia", "nome": nome}
+    if basso.startswith("comune di "):
+        if ctx.comune and basso == f"comune di {ctx.comune.lower()}":
+            return ente_comune(ctx)
+        return {"codice": "comune", "nome": nome}
+    if basso.startswith("regione "):
+        return {"codice": "regione", "nome": nome}
+    return None
+
+
 # --- una strada -------------------------------------------------------------------------------------------------
 
 def _sigle(valore: str | None) -> list[tuple[str, str]]:
@@ -199,8 +232,11 @@ def _segni_urbani(tags: dict) -> list[str]:
     return segni
 
 
-def valuta_via(tags: dict, ctx: Contesto) -> dict:
-    """Ente competente per una strada, con i motivi e i dubbi."""
+def valuta_via(tags: dict, ctx: Contesto, percorsi: list[dict] | None = None) -> dict:
+    """Ente competente per una strada, con i motivi e i dubbi.
+
+    percorsi: i percorsi ciclabili (relazioni OSM) di cui fa parte, [{"tipo", "nome", "tags"}].
+    """
     hw = tags.get("highway") or ""
     tipo = TIPI.get(hw, hw or "strada")
     classe, sigla, sigla_scritta = _classifica(_sigle(tags.get("ref")))
@@ -233,12 +269,20 @@ def valuta_via(tags: dict, ctx: Contesto) -> dict:
         motivi.append(f"Strada regionale {sigla_scritta}")
         dubbi.append("Strada regionale: spesso la gestiscono province o società regionali, da verificare")
     else:
-        ente = ente_comune(ctx)
-        if hw in MINORI:
-            motivi.append(f"{tipo[:1].upper()}{tipo[1:]} senza sigla: di norma del Comune")
-            dubbi.append(f"{tipo[:1].upper()}{tipo[1:]}: può essere pertinenza della strada accanto, o privata")
+        # senza sigla: prima il gestore scritto in OSM (sul tratto, poi sul percorso ciclabile), poi il Comune
+        gestore, da_percorso = _gestore(tags, percorsi or [], ctx)
+        if gestore is not None:
+            ente = gestore["ente"]
+            motivi.append(gestore["motivo"])
         else:
-            motivi.append("Nessuna sigla di strada statale o provinciale: strada comunale")
+            ente = ente_comune(ctx)
+            if hw in MINORI:
+                motivi.append(f"{tipo[:1].upper()}{tipo[1:]} senza sigla: di norma del Comune")
+                dubbi.append(f"{tipo[:1].upper()}{tipo[1:]}: può essere pertinenza della strada accanto, o privata")
+            else:
+                motivi.append("Nessuna sigla di strada statale o provinciale: strada comunale")
+        for p in da_percorso:
+            motivi.append(p)
         vecchie = _sigle(tags.get("old_ref"))
         if vecchie:
             dubbi.append(
@@ -255,6 +299,33 @@ def valuta_via(tags: dict, ctx: Contesto) -> dict:
     if gestore and classe in ("SS", "SP", "SR"):
         motivi.append(f"Gestore indicato in OSM: {gestore}")
     return {"ente": ente, "motivi": motivi, "dubbi": dubbi}
+
+
+def _gestore(tags: dict, percorsi: list[dict], ctx: Contesto) -> tuple[dict | None, list[str]]:
+    """(gestore riconosciuto con il motivo, altre note sui percorsi) per una strada senza sigla.
+
+    - `operator` sul tratto: è chi lo gestisce, si usa sempre (anche se non è un ente pubblico riconoscibile);
+    - `operator` del percorso ciclabile: si usa solo se è un ente pubblico (Comune, Città metropolitana, Provincia,
+      Regione, ANAS); pro loco, consorzi turistici e fondazioni promuovono il percorso ma non gestiscono la strada,
+      quindi restano solo una nota.
+    """
+    note: list[str] = []
+    sul_tratto = _pulisci(tags.get("operator") or "")
+    if sul_tratto:
+        ente = ente_da_gestore(sul_tratto, ctx) or {"codice": "altro", "nome": sul_tratto}
+        return {"ente": ente, "motivo": f"Gestore indicato in OSM sul tratto: {sul_tratto}"}, note
+    trovato = None
+    for p in percorsi:
+        gestore = _pulisci((p.get("tags") or {}).get("operator") or "")
+        nome = p.get("nome") or (p.get("tags") or {}).get("name") or "senza nome"
+        if not gestore:
+            continue
+        ente = ente_da_gestore(gestore, ctx)
+        if ente is not None and trovato is None:
+            trovato = {"ente": ente, "motivo": f"Fa parte del percorso ciclabile «{nome}», gestito da {gestore} (OSM)"}
+        elif ente is None:
+            note.append(f"Fa parte del percorso «{nome}», promosso da {gestore}: non è un ente che gestisce strade")
+    return trovato, note
 
 
 def _forse_traversa(tags: dict, dubbi: list[str]) -> None:
@@ -364,7 +435,7 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict) ->
             break
         tags = via.get("tags") or {}
         hw = tags.get("highway") or ""
-        valutazione = valuta_via(tags, ctx)
+        valutazione = valuta_via(tags, ctx, via.get("percorsi"))
         candidati.append({
             "osm_way": via["osm_way"],
             "nome": tags.get("name"),
@@ -375,6 +446,10 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict) ->
             "distanza_m": round(d, 1),
             "_punteggio": d + (PENALITA_MINORI_M if hw in MINORI else 0.0),
             **valutazione,
+            "percorsi": [
+                {"nome": p.get("nome"), "gestore": _pulisci((p.get("tags") or {}).get("operator") or "") or None}
+                for p in via.get("percorsi") or []
+            ],
             "tags": {k: tags[k] for k in TAG_UTILI if k in tags},
             "geometria": via.get("geometria") or [],
         })
