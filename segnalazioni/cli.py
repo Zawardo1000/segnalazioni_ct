@@ -2,12 +2,11 @@
 
 Sul server: docker compose exec segnalazioni-ct python -m segnalazioni <comando> (nella cartella dello stack).
   migrate                     porta lo schema all'ultima migrazione (l'app lo fa anche all'avvio)
-  importa-osm                 scarica, ritaglia e importa lo stradario OSM (importa_osm.py)
+  importa-osm                 scarica, ritaglia e importa lo stradario OSM e le sezioni Istat (importa_osm.py)
   stato                       stato dello stradario (aree, data dei dati, numero di strade e confini)
-  abbina LAT LON              abbinamento di un punto, in JSON, senza salvarlo
+  abbina LAT LON              abbinamento di un punto, in JSON, senza salvarlo (--caso: come caso di test)
   prove                       ultime prove fatte con la pagina (--sbagliate: solo quelle segnate sbagliate)
   prova N                     una prova per intero; con --caso, come caso di test (tests/fixtures/casi/)
-  pulisci-prove               cancella subito le prove più vecchie di CONSERVAZIONE_PROVE_GIORNI (l'app lo fa ogni 6 ore)
 """
 
 import argparse
@@ -40,19 +39,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--file", type=Path, help="estratto OSM già scaricato (.osm.pbf o .osm) invece di Geofabrik")
     p.add_argument("--senza-ritaglio", action="store_true", help="importa il file intero, senza ritagliarlo")
     p.add_argument("--conserva-file", action="store_true", help="non cancellare gli estratti scaricati")
+    p.add_argument("--istat", type=Path, action="append", metavar="ZIP",
+                   help="zip Istat delle sezioni (R19_21.zip, ...) già scaricato; si può ripetere")
     sub.add_parser("stato", help="stato dello stradario")
     p = sub.add_parser("abbina", help="abbinamento di un punto, in JSON (non viene salvato)")
     p.add_argument("lat", type=float)
     p.add_argument("lon", type=float)
     p.add_argument("--precisione", type=float, default=None, help="precisione del GPS in metri")
     p.add_argument("--mappa", action="store_true", help="come un punto toccato sulla mappa (distanza vera)")
+    p.add_argument("--caso", metavar="NOME", help="stampa i dati letti come caso di test (tests/fixtures/casi/)")
     p = sub.add_parser("prove", help="ultime prove fatte con la pagina")
     p.add_argument("--sbagliate", action="store_true", help="solo quelle segnate sbagliate")
     p.add_argument("-n", type=int, default=30, help="quante (predefinito 30)")
     p = sub.add_parser("prova", help="una prova per intero")
     p.add_argument("id", type=int)
     p.add_argument("--caso", action="store_true", help="come caso di test: punto, dati letti e risposta dell'utente")
-    sub.add_parser("pulisci-prove", help="cancella le prove più vecchie di CONSERVAZIONE_PROVE_GIORNI")
     args = parser.parse_args(argv)
 
     settings = _settings()
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
             db.migrate()  # PostGIS c'è solo dopo la prima migrazione
             try:
                 r = importa_osm.esegui(settings, file=args.file, ritaglio=not args.senza_ritaglio,
-                                       conserva_file=args.conserva_file)
+                                       conserva_file=args.conserva_file, istat_file=args.istat)
             except Exception as e:
                 log.error("importazione non riuscita: %s", e)
                 return 1
@@ -83,15 +84,6 @@ def main(argv: list[str] | None = None) -> int:
         from segnalazioni import abbinamento, stradario
         from segnalazioni.models import Prova
 
-        if args.comando == "pulisci-prove":
-            from segnalazioni.manutenzione import cancella_prove_vecchie
-
-            db.migrate()
-            with db.session() as s:
-                n = cancella_prove_vecchie(s, settings.conservazione_prove_giorni)
-            print(f"cancellate {n} prove più vecchie di {settings.conservazione_prove_giorni} giorni")
-            return 0
-
         with db.session() as s:
             if args.comando == "stato":
                 _stampa(stradario.stato(s))
@@ -100,6 +92,10 @@ def main(argv: list[str] | None = None) -> int:
             if args.comando == "abbina":
                 try:
                     intorno = stradario.leggi_intorno(s, args.lat, args.lon, stradario.raggio_ricerca(args.precisione))
+                    if args.caso:
+                        _stampa({"nome": args.caso, "punto": {"lat": args.lat, "lon": args.lon,
+                                 "precisione_m": args.precisione}, "intorno": intorno})
+                        return 0
                     r = abbinamento.abbina(args.lat, args.lon, args.precisione, intorno,
                                            origine="mappa" if args.mappa else "gps")
                 except stradario.FuoriArea:

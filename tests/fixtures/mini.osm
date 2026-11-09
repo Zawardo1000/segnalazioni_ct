@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Stradario minimo per provare l'importazione con osm2pgsql (tests/test_importa_osm.py): dati inventati.
      Due comuni (Acireale a est di lon 15.16, Aci Castello a ovest), provincia e regione sullo stesso quadrato,
-     una statale nord-sud, una via residenziale e una strada in costruzione (da scartare). -->
+     una statale nord-sud, una provinciale est-ovest, una via residenziale, una ciclabile e una strada in costruzione
+     (da scartare); due cartelli "Capomulini" sulla statale, le località Capomulini e Acireale. I codici Istat (ref:ISTAT)
+     servono alle sezioni di censimento di prova (tests/test_istat.py). -->
 <osm version="0.6" generator="a mano">
   <node id="1" version="1" lat="37.57" lon="15.16"/>
   <node id="2" version="1" lat="37.57" lon="15.18"/>
@@ -17,6 +19,8 @@
   <node id="15" version="1" lat="37.5802" lon="15.1687"/>
   <node id="16" version="1" lat="37.586" lon="15.176"/>
   <node id="17" version="1" lat="37.588" lon="15.176"/>
+  <node id="18" version="1" lat="37.5893" lon="15.173"/>
+  <node id="19" version="1" lat="37.5893" lon="15.181"/>
   <node id="20" version="1" lat="37.5795" lon="15.1685">
     <tag k="traffic_sign" v="city_limit"/>
     <tag k="name" v="Capomulini"/>
@@ -25,6 +29,15 @@
     <tag k="place" v="village"/>
     <tag k="name" v="Capomulini"/>
     <tag k="population" v="1500"/>
+  </node>
+  <node id="22" version="1" lat="37.5825" lon="15.1685">
+    <tag k="traffic_sign" v="city_limit"/>
+    <tag k="name" v="Capomulini"/>
+  </node>
+  <node id="23" version="1" lat="37.589" lon="15.175">
+    <tag k="place" v="town"/>
+    <tag k="name" v="Acireale"/>
+    <tag k="population" v="50000"/>
   </node>
   <way id="100" version="1">
     <nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/>
@@ -53,12 +66,18 @@
     <tag k="highway" v="cycleway"/>
     <tag k="name" v="Ciclabile di prova"/>
   </way>
+  <way id="204" version="1">
+    <nd ref="18"/><nd ref="19"/>
+    <tag k="highway" v="secondary"/>
+    <tag k="ref" v="SP 2"/>
+  </way>
   <relation id="1000" version="1">
     <member type="way" ref="100" role="outer"/>
     <tag k="type" v="boundary"/>
     <tag k="boundary" v="administrative"/>
     <tag k="admin_level" v="8"/>
     <tag k="name" v="Acireale"/>
+    <tag k="ref:ISTAT" v="087004"/>
   </relation>
   <relation id="1001" version="1">
     <member type="way" ref="101" role="outer"/>
@@ -66,6 +85,7 @@
     <tag k="boundary" v="administrative"/>
     <tag k="admin_level" v="8"/>
     <tag k="name" v="Aci Castello"/>
+    <tag k="ref:ISTAT" v="087002"/>
   </relation>
   <relation id="2000" version="1">
     <member type="way" ref="100" role="outer"/>
@@ -81,6 +101,7 @@
     <tag k="boundary" v="administrative"/>
     <tag k="admin_level" v="4"/>
     <tag k="name" v="Sicilia"/>
+    <tag k="ref:ISTAT" v="19"/>
   </relation>
   <relation id="4000" version="1">
     <member type="way" ref="203" role=""/>

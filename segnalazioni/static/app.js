@@ -230,10 +230,27 @@ function dettagliVia(c) {
   );
 }
 
+function abitanti(n) { return n == null ? "" : `circa ${n.toLocaleString("it-IT")} ab.`; }
+
+// centro abitato del punto: dai cartelli OSM o dalle sezioni Istat (regola dei 10.000 abitanti)
+function centroAbitato(r) {
+  const c = r.centro;
+  if (!c) return r.sezioni_istat ? "fuori dai centri abitati" : null;
+  const fonte = c.fonte === "cartelli" ? "tra i cartelli OSM" : c.tipo_loc === 2 ? "nucleo, sezioni Istat" : "sezioni Istat";
+  const parti = [`${c.nome || "senza nome"} (${fonte})`];
+  if (c.popolazione != null) parti.push(abitanti(c.popolazione));
+  if (c.localita_istat && c.popolazione_localita != null && c.popolazione_localita !== c.popolazione) {
+    parti.push(`per Istat parte di «${c.localita_istat}», ${abitanti(c.popolazione_localita)}`);
+  }
+  return parti.join(", ");
+}
+
 function luogo(r) {
   const p = r.punto;
+  const centro = centroAbitato(r);
   const righe = [
     ["Comune", r.comune || "non determinato"],
+    centro ? ["Centro abitato", centro] : null,
     ["Provincia", r.provincia ? `${r.provincia}${r.sigla_provincia ? ` (${r.sigla_provincia})` : ""}` : "?"],
     ["Regione", r.regione || "?"],
     r.comuni_vicini && r.comuni_vicini.length ? ["Comuni vicini", r.comuni_vicini.join(", ")] : null,

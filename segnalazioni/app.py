@@ -1,5 +1,3 @@
-import asyncio
-import contextlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -7,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from segnalazioni import api, manutenzione
+from segnalazioni import api
 from segnalazioni.config import BASE_DIR, Settings, check_required, get_settings
 from segnalazioni.db import Database
 from segnalazioni.sicurezza import LimiteAlMinuto, LimiteCorpoMiddleware, SecurityHeadersMiddleware
@@ -21,20 +19,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db = Database(settings.database_url)
-        compito = None
         try:
             # "piu-nuovo" dopo un ritorno a una versione precedente: si parte lo stesso
             app.state.schema_state = db.migrate()
             app.state.settings = settings
             app.state.db = db
-            if settings.conservazione_prove_giorni > 0:
-                compito = asyncio.create_task(manutenzione.ciclo(db, settings.conservazione_prove_giorni))
             yield
         finally:
-            if compito is not None:
-                compito.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await compito
             db.dispose()
 
     app = FastAPI(title="Segnalazioni CT", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)

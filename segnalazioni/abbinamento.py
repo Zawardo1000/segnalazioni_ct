@@ -10,6 +10,7 @@ Dati in ingresso, l'"intorno" del punto:
       "provincia": {"nome": str, "tags": {...}} | None,   # sigla in tags "ref" (CT) o "ISO3166-2" (IT-CT)
       "regione": {"nome": str} | None,
       "comuni_vicini": [str, ...],                         # confine entro RAGGIO_CONFINI_M dal punto
+      "istat": {"regioni": [int], "centri": [...], "vicini": [...]},  # centri abitati (osm.centri), se ci sono
       "fonte": {...},                                      # da dove vengono i dati (solo informativo)
     }
 
@@ -18,6 +19,10 @@ Regole (docs/PROGETTO.md §2-3):
   non solo la più vicina;
 - ente dalla sigla (ref): SS → ANAS, SP → provincia o città metropolitana, A18/A20 → CAS, A19 e le altre ANAS →
   ANAS, nessuna sigla → Comune;
+- traversa interna (art. 2 c. 7 CdS): dentro un centro abitato con più di 10.000 abitanti il tratto di una statale,
+  regionale o provinciale è del Comune. Il centro è quello dei cartelli OSM, se il punto è tra due cartelli con lo
+  stesso nome, altrimenti quello delle sezioni Istat; gli abitanti sono calcolati all'importazione (istat.py). Senza
+  sezioni Istat per la regione restano gli indizi di OSM (limite di velocità, nome urbano) come dubbio;
 - candidati di enti diversi → "da_scegliere": decide l'utente;
 - affidabilità più bassa con ex sigle (old_ref), strade di confine, confine comunale vicino, possibile traversa
   interna, strade minori, GPS impreciso.
@@ -35,6 +40,14 @@ PENALITA_MINORI_M = 2.0
 RAGGIO_CONFINI_M = 150
 PRECISIONE_MEDIA_M = 30
 PRECISIONE_BASSA_M = 75
+
+# Traverse interne (docs/PROGETTO.md §14): conta la popolazione del centro abitato, non del Comune. Tra SOGLIA_BASSA e
+# SOGLIA_ALTA la stima delle sezioni Istat non basta per decidere: si segue la soglia vera, con affidabilità bassa
+# (soglie decise dall'utente il 09/11/2026).
+SOGLIA_ABITANTI = 10_000
+SOGLIA_BASSA = 9_500
+SOGLIA_ALTA = 10_500
+BORDO_CENTRO_M = 150  # così vicino al limite Istat di un centro decide il cartello, che i dati possono non avere
 
 # Tipi di highway che non sono strade su cui si segnala (stessa lista in osm/stradario.lua)
 ESCLUSE = {
@@ -133,6 +146,15 @@ class Contesto:
         self.sigla = _sigla_provincia(prov)
         self.regione = ((intorno.get("regione") or {}).get("nome") or "").strip() or None
         self.comuni_vicini = sorted({n for n in intorno.get("comuni_vicini") or [] if n and n != self.comune})
+        # centri abitati: solo se ci sono le sezioni Istat della regione del punto
+        tags_regione = (intorno.get("regione") or {}).get("tags") or {}
+        codice = _intero(str(tags_regione.get("ref:ISTAT") or ""))
+        istat = intorno.get("istat") or {}
+        self.con_istat = codice is not None and codice in (istat.get("regioni") or [])
+        centri = istat.get("centri") or [] if self.con_istat else []
+        self.centro_cartelli = next((c for c in centri if c.get("fonte") == "cartelli"), None)
+        self.centro_istat = next((c for c in centri if c.get("fonte") == "istat"), None)
+        self.centri_vicini = list(istat.get("vicini") or []) if self.con_istat else []
 
 
 def ente_anas(ctx: Contesto) -> dict:
@@ -238,7 +260,9 @@ def valuta_via(tags: dict, ctx: Contesto, percorsi: list[dict] | None = None) ->
     """Ente competente per una strada, con i motivi e i dubbi.
 
     percorsi: i percorsi ciclabili (relazioni OSM) di cui fa parte, [{"tipo", "nome", "tags"}].
+    Nel risultato anche "livello" (affidabilità massima, 0-2) e "forse_traversa" (solo indizi OSM di traversa).
     """
+    esame = {"livello": 2, "forse_traversa": False}
     hw = tags.get("highway") or ""
     tipo = TIPI.get(hw, hw or "strada")
     classe, sigla, sigla_scritta = _classifica(_sigle(tags.get("ref")))
@@ -261,15 +285,16 @@ def valuta_via(tags: dict, ctx: Contesto, percorsi: list[dict] | None = None) ->
     elif classe == "SS":
         ente = ente_anas(ctx)
         motivi.append(f"Strada statale {sigla_scritta}: ente proprietario ANAS (art. 14 CdS)")
-        _forse_traversa(tags, dubbi)
+        ente = _traversa(tags, ctx, ente, sigla_scritta, motivi, dubbi, esame)
     elif classe == "SP":
         ente = ente_provincia(ctx)
         motivi.append(f"Strada provinciale {sigla_scritta}: ente proprietario {ente['nome']} (art. 14 CdS)")
-        _forse_traversa(tags, dubbi)
+        ente = _traversa(tags, ctx, ente, sigla_scritta, motivi, dubbi, esame)
     elif classe == "SR":
         ente = {"codice": "regione", "nome": f"Regione {ctx.regione}" if ctx.regione else "Regione"}
         motivi.append(f"Strada regionale {sigla_scritta}")
         dubbi.append("Strada regionale: spesso la gestiscono province o società regionali, da verificare")
+        ente = _traversa(tags, ctx, ente, sigla_scritta, motivi, dubbi, esame)
     else:
         # senza sigla: prima il gestore scritto in OSM (sul tratto, poi sul percorso ciclabile), poi il Comune
         gestore, da_percorso = _gestore(tags, percorsi or [], ctx)
@@ -300,7 +325,7 @@ def valuta_via(tags: dict, ctx: Contesto, percorsi: list[dict] | None = None) ->
     gestore = tags.get("operator")
     if gestore and classe in ("SS", "SP", "SR"):
         motivi.append(f"Gestore indicato in OSM: {gestore}")
-    return {"ente": ente, "motivi": motivi, "dubbi": dubbi}
+    return {"ente": ente, "motivi": motivi, "dubbi": dubbi, **esame}
 
 
 def _gestore(tags: dict, percorsi: list[dict], ctx: Contesto) -> tuple[dict | None, list[str]]:
@@ -330,7 +355,8 @@ def _gestore(tags: dict, percorsi: list[dict], ctx: Contesto) -> tuple[dict | No
     return trovato, note
 
 
-def _forse_traversa(tags: dict, dubbi: list[str]) -> None:
+def _forse_traversa(tags: dict, dubbi: list[str]) -> bool:
+    """Senza le sezioni Istat: indizi di OSM che il tratto sia dentro un centro abitato, come dubbio."""
     segni = _segni_urbani(tags)
     if segni:
         dubbi.append(
@@ -338,6 +364,97 @@ def _forse_traversa(tags: dict, dubbi: list[str]) -> None:
             "delimita il Comune, ha più di 10.000 abitanti (il centro, non il Comune intero), il tratto è del Comune "
             "(art. 2 c. 7 CdS, art. 5 c. 3 del Regolamento); in OSM i tratti ceduti di solito perdono la sigla"
         )
+    return bool(segni)
+
+
+def _ab(n: int) -> str:
+    return f"{n:,}".replace(",", ".")
+
+
+def _traversa(tags: dict, ctx: Contesto, ente: dict, sigla: str | None, motivi: list[str], dubbi: list[str],
+              esame: dict) -> dict:
+    """Ente del tratto di una strada statale, regionale o provinciale: dentro un centro abitato con più di 10.000
+    abitanti è del Comune (art. 2 c. 7 CdS). Il centro è quello dei cartelli OSM (la delimitazione del Comune, se il
+    punto è tra due cartelli con lo stesso nome), altrimenti quello delle sezioni Istat; gli abitanti sono quelli
+    calcolati all'importazione (osm.centri)."""
+    if not ctx.con_istat:
+        esame["forse_traversa"] = _forse_traversa(tags, dubbi)
+        return ente
+    centro = ctx.centro_cartelli or ctx.centro_istat
+    if centro is None:
+        motivi.append("Fuori dai centri abitati (sezioni Istat 2021 e cartelli OSM): niente traversa interna")
+        for v in ctx.centri_vicini[:1]:
+            dubbi.append(
+                f"A {v.get('distanza_m')} m dal centro abitato «{v.get('nome')}» (circa {_ab(v['popolazione'])} "
+                "abitanti secondo Istat): se il cartello di inizio centro abitato è prima di qui, il tratto è del Comune"
+            )
+        return ente
+
+    nome = centro.get("nome") or "senza nome"
+    if centro is ctx.centro_cartelli:
+        dove = f"tra i cartelli di centro abitato «{nome}» (OSM)"
+    elif centro.get("tipo_loc") == 2:
+        dove = f"nel nucleo abitato «{nome}» (Istat)"
+    else:
+        dove = f"nel centro abitato «{nome}» (sezioni Istat)"
+    pop, fonte = centro.get("popolazione"), "sezioni Istat 2021"
+    if pop is None and ctx.centro_istat is not None and centro is not ctx.centro_istat:
+        # cartelli senza una località Istat collegata: gli abitanti del centro Istat in cui cade il punto
+        pop = ctx.centro_istat.get("popolazione")
+        fonte = f"sezioni Istat 2021 del centro «{ctx.centro_istat.get('nome')}»"
+    if pop is None and centro.get("popolazione_osm"):
+        pop, fonte = centro["popolazione_osm"], "OSM"
+    if pop is None:
+        dubbi.append(f"Sei {dove}, ma non si sa quanti abitanti ha: con più di 10.000 il tratto è del Comune")
+        return ente
+    abitanti = f"circa {_ab(pop)} abitanti ({fonte})"
+
+    hw = tags.get("highway") or ""
+    if hw in ("trunk", "trunk_link"):
+        motivi.append(f"Sei {dove}, {abitanti}")
+        if pop >= SOGLIA_BASSA:
+            dubbi.append(
+                "Strada extraurbana principale: varianti e tangenziali senza accessi restano dell'ente anche dentro "
+                "un centro con più di 10.000 abitanti; se invece è la strada che attraversa il centro, il tratto è del "
+                "Comune"
+            )
+        return ente
+
+    if pop >= SOGLIA_ABITANTI:
+        nuovo = ente_comune(ctx)
+        motivi.append(
+            f"Traversa interna: sei {dove}, {abitanti}. Sopra i 10.000 abitanti il tratto è del Comune "
+            f"(art. 2 c. 7 CdS), anche se in OSM ha ancora la sigla {sigla}"
+        )
+    else:
+        nuovo = ente
+        motivi.append(f"Sei {dove}, {abitanti}: sotto i 10.000 il tratto resta all'ente della strada (art. 2 c. 7 CdS)")
+    if SOGLIA_BASSA <= pop < SOGLIA_ALTA:
+        esame["livello"] = 0
+        dubbi.append(
+            "Abitanti vicini alla soglia dei 10.000: decidono la delimitazione del centro abitato fatta dal Comune e "
+            "la popolazione che ha usato"
+        )
+    pop_loc = centro.get("popolazione_localita")
+    if pop < SOGLIA_ABITANTI and centro.get("diviso") and pop_loc and pop_loc >= SOGLIA_ABITANTI:
+        loc = centro.get("localita_istat") or "?"
+        if centro is ctx.centro_cartelli:
+            motivi.append(f"Istat lo conta nel centro «{loc}» ({_ab(pop_loc)} abitanti), ma i cartelli lo delimitano a parte")
+        else:
+            dubbi.append(
+                f"Istat conta «{nome}» nel centro «{loc}» ({_ab(pop_loc)} abitanti): se il Comune li ha delimitati "
+                "come un solo centro abitato, il tratto è del Comune"
+            )
+    osm = centro.get("popolazione_osm")
+    if osm and fonte != "OSM" and (osm >= SOGLIA_ABITANTI) != (pop >= SOGLIA_ABITANTI):
+        dubbi.append(f"Per OSM «{nome}» ha {_ab(osm)} abitanti (a volte è la popolazione del Comune intero)")
+    bordo = centro.get("dal_bordo_m")
+    if centro is ctx.centro_istat and bordo is not None and bordo < BORDO_CENTRO_M:
+        dubbi.append(
+            f"A {bordo} m dal limite del centro secondo Istat: il limite che conta è quello dei cartelli di centro "
+            "abitato"
+        )
+    return nuovo
 
 
 # --- il punto ---------------------------------------------------------------------------------------------------
@@ -371,6 +488,13 @@ def _punti(intorno: dict | None, chiave: str) -> list[dict]:
     return uscita
 
 
+def _centro(c: dict | None) -> dict | None:
+    if not c:
+        return None
+    chiavi = ("fonte", "nome", "popolazione", "popolazione_localita", "localita_istat", "popolazione_osm", "tipo_loc")
+    return {k: c.get(k) for k in chiavi}
+
+
 def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | None, intorno: dict | None) -> dict:
     return {
         "punto": {"lat": lat, "lon": lon, "precisione_m": precisione_m},
@@ -381,6 +505,10 @@ def _base(lat: float, lon: float, precisione_m: float | None, ctx: Contesto | No
         "comuni_vicini": ctx.comuni_vicini if ctx else [],
         "cartelli": _punti(intorno, "cartelli"),
         "localita": _punti(intorno, "localita"),
+        # centro abitato del punto: dai cartelli OSM o dalle sezioni Istat (None fuori, o senza sezioni Istat)
+        "sezioni_istat": bool(ctx and ctx.con_istat),
+        "centro": _centro(ctx and (ctx.centro_cartelli or ctx.centro_istat)),
+        "centro_istat": _centro(ctx and ctx.centro_cartelli and ctx.centro_istat),
         "fonte": (intorno or {}).get("fonte"),
     }
 
@@ -459,9 +587,12 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict, or
             "geometria": via.get("geometria") or [],
         })
     candidati.sort(key=lambda c: c["_punteggio"])
+    esami = {}
     for c in candidati:
         del c["_punteggio"]
+        esami[c["osm_way"]] = {"livello": c.pop("livello"), "forse_traversa": c.pop("forse_traversa")}
     principale = candidati[0]
+    esame = esami[principale["osm_way"]]
 
     gruppi: dict[tuple[str, str], dict] = {}
     for c in candidati:
@@ -471,7 +602,7 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict, or
 
     motivi = list(principale["motivi"])
     dubbi = list(principale["dubbi"])
-    if any("traversa interna" in d for d in principale["dubbi"]):
+    if esame["forse_traversa"]:
         # per la traversa conta il centro abitato delimitato dal Comune: i cartelli e le frazioni di OSM ci si
         # avvicinano più dei poligoni Istat, che fondono i centri contigui
         indizi = []
@@ -490,6 +621,7 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict, or
         dubbi.insert(0, "Entro la precisione del GPS ci sono strade di enti diversi: indica su quale sei")
     if principale["dubbi"]:
         livello = min(livello, 1)
+    livello = min(livello, esame["livello"])
     if ctx.comuni_vicini:
         livello = min(livello, 1)
         dubbi.append("Vicino al confine con: " + ", ".join(ctx.comuni_vicini))

@@ -25,7 +25,7 @@ def _settings(database_url, tmp_path):
 
 def test_importa_ritaglia_e_si_legge(db, database_url, tmp_path):
     r = importa_osm.esegui(_settings(database_url, tmp_path), file=MINI_OSM)
-    assert (r["vie"], r["comuni"]) == (3, 2)  # la strada in costruzione resta fuori
+    assert (r["vie"], r["comuni"]) == (4, 2)  # la strada in costruzione resta fuori
     with db.session() as s:
         st = stradario.stato(s)
         intorno = stradario.leggi_intorno(s, 37.58, 15.1686, 100)
@@ -60,7 +60,7 @@ def test_nuova_importazione_sostituisce_la_vecchia(db, database_url, tmp_path):
     importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
     importa_osm.esegui(s, file=MINI_OSM, ritaglio=False)
     with db.engine.connect() as c:
-        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 3
+        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 4
         assert c.scalar(text("SELECT count(*) FROM osm.importazione")) == 1
         assert c.scalar(text("SELECT to_regnamespace('osm_import')")) is None
 
@@ -73,4 +73,4 @@ def test_importazione_vuota_lascia_lo_stradario_di_prima(db, database_url, tmp_p
     with pytest.raises(RuntimeError, match="importazione vuota"):
         importa_osm.esegui(s, file=vuoto, ritaglio=False)
     with db.engine.connect() as c:
-        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 3
+        assert c.scalar(text("SELECT count(*) FROM osm.vie")) == 4

@@ -18,11 +18,20 @@ GEOFABRIK = "https://download.geofabrik.de/europe/italy"
 
 
 class AreaOSM(BaseModel):
-    """Un'area dello stradario: estratto Geofabrik da scaricare e riquadro (ovest, sud, est, nord) da ritagliare."""
+    """Un'area dello stradario: estratto Geofabrik da scaricare, riquadro (ovest, sud, est, nord) da ritagliare e
+    regioni (codici Istat) di cui caricare le sezioni di censimento, per la popolazione dei centri abitati."""
 
     nome: str
     url: str
     bbox: tuple[float, float, float, float]
+    istat_regioni: list[int] = []
+
+    @field_validator("istat_regioni")
+    @classmethod
+    def _regioni(cls, v: list[int]) -> list[int]:
+        if any(not 1 <= r <= 20 for r in v):
+            raise ValueError(f"codici Istat delle regioni da 1 a 20: {v}")
+        return v
 
     @field_validator("bbox")
     @classmethod
@@ -51,10 +60,13 @@ class Settings(BaseSettings):
     # margine: dentro ci sono anche pezzi delle province e regioni vicine, e va bene così.
     osm_aree: list[AreaOSM] = [
         AreaOSM(nome="Città metropolitana di Catania", url=f"{GEOFABRIK}/isole-latest.osm.pbf",
-                bbox=(14.32, 37.02, 15.29, 37.99)),
+                bbox=(14.32, 37.02, 15.29, 37.99), istat_regioni=[19]),
         AreaOSM(nome="Lombardia", url=f"{GEOFABRIK}/nord-ovest-latest.osm.pbf",
-                bbox=(8.47, 44.66, 11.45, 46.66)),
+                bbox=(8.47, 44.66, 11.45, 46.66), istat_regioni=[3]),
     ]
+    # Sezioni di censimento Istat 2021, una zip per regione (circa 60 MB): popolazione dei centri abitati per le
+    # traverse interne (istat.py). {regione:02d} = codice Istat della regione (19 Sicilia, 03 Lombardia).
+    istat_url_regione: str = "https://www.istat.it/storage/cartografia/basi_territoriali/2021/R{regione:02d}_21.zip"
     # memoria per osm2pgsql (modalità --slim: i dati intermedi stanno nel database, non in RAM)
     osm2pgsql_cache_mb: int = 300
 
@@ -69,8 +81,6 @@ class Settings(BaseSettings):
 
     # conserva, per ogni prova, i dati letti dallo stradario: da lì si ricavano i casi di test
     salva_fonti: bool = True
-    # le prove contengono le posizioni di chi prova: si cancellano dopo questi giorni (0 = mai)
-    conservazione_prove_giorni: int = 365
     # limiti dell'API, oltre a quelli di nginx: abbinamenti al minuto per tutto il servizio, corpo delle richieste
     abbinamenti_al_minuto: int = 120
     max_corpo_bytes: int = 16 * 1024
@@ -78,6 +88,10 @@ class Settings(BaseSettings):
     @property
     def nome_aree(self) -> str:
         return ", ".join(a.nome for a in self.osm_aree)
+
+    @property
+    def istat_regioni(self) -> list[int]:
+        return sorted({r for a in self.osm_aree for r in a.istat_regioni})
 
 
 def check_required(settings: Settings) -> Settings:

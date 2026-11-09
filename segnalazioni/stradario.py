@@ -9,7 +9,7 @@ import json
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from segnalazioni.abbinamento import RAGGIO_CONFINI_M, metri_per_grado
+from segnalazioni.abbinamento import BORDO_CENTRO_M, RAGGIO_CONFINI_M, SOGLIA_BASSA, metri_per_grado
 
 SCHEMA = "osm"
 RAGGIO_CARTELLI_M = 500  # cartelli di inizio/fine centro abitato
@@ -39,9 +39,7 @@ def stato(session: Session) -> dict | None:
         return None
     if session.scalar(text("SELECT to_regclass('osm.importazione')")) is None:
         return {}
-    riga = session.execute(
-        text("SELECT aree, fonti, dati_del, importato_il, bbox, vie, confini FROM osm.importazione LIMIT 1")
-    ).mappings().first()
+    riga = session.execute(text("SELECT * FROM osm.importazione LIMIT 1")).mappings().first()
     if riga is None:
         return {}
     return {
@@ -52,6 +50,7 @@ def stato(session: Session) -> dict | None:
         "bbox": riga["bbox"],
         "vie": riga["vie"],
         "confini": riga["confini"],
+        "istat": riga.get("istat") or {"regioni": []},  # assente negli stradari importati prima delle sezioni Istat
     }
 
 
@@ -127,6 +126,7 @@ def leggi_intorno(session: Session, lat: float, lon: float, raggio_m: int) -> di
         "regione": confine(per_livello.get(4)),
         "comuni_vicini": [n for n in vicini if n],
         **_punti_vicini(session, lat, lon),
+        "istat": _centri(session, lat, lon, (st.get("istat") or {}).get("regioni") or []),
         "fonte": {"tipo": "stradario", "dati_del": st.get("dati_del"), "importato_il": st.get("importato_il")},
     }
 
@@ -144,6 +144,42 @@ def _percorsi(session: Session, way_ids: list[int]) -> dict[int, list[dict]]:
     for r in righe:
         uscita.setdefault(r["way_id"], []).append({"tipo": r["tipo"], "nome": r["nome"], "tags": r["tags"] or {}})
     return uscita
+
+
+def _centri(session: Session, lat: float, lon: float, regioni: list[int]) -> dict:
+    """Centri abitati (tabella osm.centri, istat.py) che contengono il punto, prima quelli dei cartelli, e i centri
+    Istat grandi appena fuori. regioni: le regioni (codici Istat) di cui ci sono le sezioni."""
+    vuoto = {"regioni": regioni, "centri": [], "vicini": []}
+    if not regioni or session.scalar(text("SELECT to_regclass('osm.centri')")) is None:
+        return vuoto
+    m_lat, m_lon = metri_per_grado(lat)
+    punto = "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+    par = {"lat": lat, "lon": lon, "r": BORDO_CENTRO_M, "dx": BORDO_CENTRO_M / m_lon, "dy": BORDO_CENTRO_M / m_lat,
+           "soglia": SOGLIA_BASSA}
+    campi = "fonte, nome, popolazione, popolazione_localita, popolazione_osm, localita_istat, diviso, tipo_loc"
+    dentro = session.execute(
+        text(
+            f"SELECT {campi}, CASE WHEN fonte = 'istat' THEN "
+            f"round(ST_Distance(ST_Boundary(geom)::geography, {punto}::geography)) END AS dal_bordo_m "
+            f"FROM osm.centri WHERE geom && {punto} AND ST_Covers(geom, {punto}) "
+            f"ORDER BY fonte = 'cartelli' DESC, ST_Area(geom) LIMIT 4"
+        ),
+        par,
+    ).mappings().all()
+    vicini = session.execute(
+        text(
+            f"SELECT {campi}, round(ST_Distance(geom::geography, {punto}::geography)) AS distanza_m "
+            f"FROM osm.centri WHERE fonte = 'istat' AND popolazione >= :soglia "
+            f"AND geom && ST_Expand({punto}, :dx, :dy) AND NOT ST_Covers(geom, {punto}) "
+            f"AND ST_DWithin(geom::geography, {punto}::geography, :r) ORDER BY distanza_m LIMIT 2"
+        ),
+        par,
+    ).mappings().all()
+
+    def pulito(r) -> dict:
+        return {k: (int(v) if k in ("dal_bordo_m", "distanza_m") and v is not None else v) for k, v in r.items()}
+
+    return {"regioni": regioni, "centri": [pulito(r) for r in dentro], "vicini": [pulito(r) for r in vicini]}
 
 
 def _punti_vicini(session: Session, lat: float, lon: float) -> dict:

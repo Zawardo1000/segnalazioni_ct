@@ -8,12 +8,16 @@
    non in RAM, e alla fine si cancellano) nello schema osm_import;
 4. controlla che ci siano strade e comuni, poi sostituisce lo schema osm in una sola transazione: l'app non vede mai
    uno stradario a metà, e un'importazione fallita lascia quello di prima;
-5. cancella i file (gli estratti pesano centinaia di MB e si riscaricano: non devono finire nel backup), salvo
+5. prima della sostituzione carica le sezioni di censimento Istat delle regioni delle aree e ne ricava i centri
+   abitati con gli abitanti (istat.py), per la regola dei 10.000 abitanti; se Istat non risponde lo stradario si
+   importa lo stesso, senza (l'abbinamento torna agli indizi di OSM), e il risultato lo dice;
+6. cancella i file (gli estratti pesano centinaia di MB e si riscaricano: non devono finire nel backup), salvo
    --conserva-file. Se l'importazione fallisce restano, per riprovare senza riscaricarli.
 
 osmium e osm2pgsql sono pacchetti di sistema (APT_PACKAGES del Dockerfile). La password del database passa a
 osm2pgsql nelle variabili d'ambiente di libpq, mai negli argomenti (che finiscono nei log e in ps).
-Comando: python -m segnalazioni importa-osm [--file estratto.osm.pbf] [--senza-ritaglio] [--conserva-file]
+Comando: python -m segnalazioni importa-osm [--file estratto.osm.pbf] [--istat R19_21.zip ...] [--senza-ritaglio]
+[--conserva-file]
 """
 
 import hashlib
@@ -22,6 +26,7 @@ import logging
 import os
 import subprocess
 import time
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +34,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
+from segnalazioni import istat
 from segnalazioni.config import BASE_DIR, AreaOSM, Settings
 from segnalazioni.db import Database
 
@@ -102,6 +108,31 @@ def _scarica_riprendendo(c: httpx.Client, url: str, parziale: Path) -> None:
             time.sleep(min(30, 5 * tentativo))
 
 
+def scarica_istat(settings: Settings, regione: int, cartella: Path) -> Path:
+    """Zip delle sezioni Istat di una regione. Istat non pubblica impronte: si controlla che lo zip sia integro."""
+    url = settings.istat_url_regione.format(regione=regione)
+    dest = cartella / url.rsplit("/", 1)[-1]
+    if dest.exists() and time.time() - dest.stat().st_mtime < RIUSA_SE_PIU_RECENTE_DI_S:
+        log.info("sezioni Istat già scaricate da meno di 20 ore: %s", dest)
+        return dest
+    parziale = dest.with_name(dest.name + ".part")
+    timeout = httpx.Timeout(60.0, read=120.0)
+    with httpx.Client(headers={"User-Agent": settings.user_agent}, timeout=timeout, follow_redirects=True) as c:
+        log.info("scarico %s", url)
+        _scarica_riprendendo(c, url, parziale)
+    try:
+        with zipfile.ZipFile(parziale) as z:
+            rotto = z.testzip()
+    except zipfile.BadZipFile as e:
+        rotto = str(e)
+    if rotto is not None:
+        parziale.unlink(missing_ok=True)
+        raise RuntimeError(f"zip Istat danneggiato ({rotto}): {url}")
+    parziale.replace(dest)
+    log.info("scaricati %.1f MB", dest.stat().st_size / 1e6)
+    return dest
+
+
 def data_dei_dati(file: Path) -> datetime | None:
     """Data dei dati OSM dall'intestazione del file (gli estratti Geofabrik la scrivono)."""
     try:
@@ -130,7 +161,7 @@ def unisci(files: list[Path], dest: Path) -> Path:
     return dest
 
 
-def importa(settings: Settings, file: Path, metadati: dict) -> dict:
+def importa(settings: Settings, file: Path, metadati: dict, zip_istat: list[Path] | None = None) -> dict:
     url = make_url(settings.database_url)
     db = Database(settings.database_url)
     try:
@@ -165,18 +196,31 @@ def importa(settings: Settings, file: Path, metadati: dict) -> dict:
             comuni = c.scalar(text(f"SELECT count(*) FROM {SCHEMA_IMPORT}.confini WHERE admin_level = 8"))
             if not vie or not comuni:
                 raise RuntimeError(f"importazione vuota ({vie} strade, {comuni} comuni): resta lo stradario di prima")
+            dati_istat = dict(metadati.get("istat") or {"regioni": []})
+            if zip_istat:
+                riquadri = [a.bbox for a in settings.osm_aree] if metadati["bbox"] else []
+                inizio_istat = time.monotonic()
+                try:
+                    with c.begin_nested():  # se fallisce si perde solo la parte Istat
+                        dati_istat.update(istat.importa(c, SCHEMA_IMPORT, zip_istat, riquadri))
+                    dati_istat["fonte"] = "Istat, Basi territoriali 2021 (sezioni di censimento)"
+                    dati_istat["secondi"] = round(time.monotonic() - inizio_istat)
+                except Exception as e:
+                    log.exception("sezioni Istat non importate: lo stradario si importa senza")
+                    dati_istat = {"regioni": [], "errore": f"sezioni Istat non importate: {e}"[:500]}
             c.execute(text(
                 f"CREATE TABLE {SCHEMA_IMPORT}.importazione (aree text NOT NULL, fonti text NOT NULL, "
                 "dati_del timestamptz, importato_il timestamptz NOT NULL, bbox jsonb, vie integer NOT NULL, "
-                "confini integer NOT NULL)"
+                "confini integer NOT NULL, istat jsonb)"
             ))
             c.execute(
                 text(
                     f"INSERT INTO {SCHEMA_IMPORT}.importazione VALUES "
-                    "(:aree, :fonti, :dati_del, :importato_il, CAST(:bbox AS jsonb), :vie, :confini)"
+                    "(:aree, :fonti, :dati_del, :importato_il, CAST(:bbox AS jsonb), :vie, :confini, "
+                    "CAST(:istat AS jsonb))"
                 ),
                 {**metadati, "bbox": json.dumps(metadati["bbox"]), "importato_il": datetime.now(UTC),
-                 "vie": vie, "confini": confini},
+                 "vie": vie, "confini": confini, "istat": json.dumps(dati_istat)},
             )
             c.execute(text(f"ANALYZE {SCHEMA_IMPORT}.vie"))
             c.execute(text(f"ANALYZE {SCHEMA_IMPORT}.confini"))
@@ -186,17 +230,33 @@ def importa(settings: Settings, file: Path, metadati: dict) -> dict:
             c.execute(text(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE"))
             c.execute(text(f"ALTER SCHEMA {SCHEMA_IMPORT} RENAME TO {SCHEMA}"))
         risultato = {"aree": metadati["aree"], "vie": vie, "confini": confini, "comuni": comuni,
-                     "dati_del": metadati["dati_del"], "secondi_osm2pgsql": round(durata)}
+                     "dati_del": metadati["dati_del"], "secondi_osm2pgsql": round(durata), "istat": dati_istat}
         log.info("stradario importato: %s", risultato)
         return risultato
     finally:
         db.dispose()
 
 
-def esegui(settings: Settings, file: Path | None = None, ritaglio: bool = True, conserva_file: bool = False) -> dict:
+def esegui(settings: Settings, file: Path | None = None, ritaglio: bool = True, conserva_file: bool = False,
+           istat_file: list[Path] | None = None) -> dict:
+    """file: estratto OSM già scaricato invece di Geofabrik; istat_file: zip Istat già scaricati invece di quelli delle
+    regioni delle aree. Con file e senza istat_file niente sezioni Istat (i test, le prove sul PC)."""
     cartella = settings.data_dir / "osm"
     cartella.mkdir(parents=True, exist_ok=True)
     aree = settings.osm_aree
+
+    # sezioni Istat: prima dell'importazione OSM, così un errore di download si vede subito
+    zip_istat: list[Path] = list(istat_file or [])
+    scaricati_istat: list[Path] = []
+    errori_istat: list[str] = []
+    if istat_file is None and file is None:
+        for regione in settings.istat_regioni:
+            try:
+                scaricati_istat.append(scarica_istat(settings, regione, cartella))
+            except Exception as e:  # Istat irraggiungibile: stradario senza i centri di quella regione
+                log.warning("sezioni Istat della regione %s non scaricate: %s", regione, e)
+                errori_istat.append(f"regione {regione}: {e}"[:300])
+        zip_istat = list(scaricati_istat)
 
     # sorgenti: il file indicato, oppure gli estratti Geofabrik (ognuno scaricato una volta sola)
     if file is not None:
@@ -220,13 +280,17 @@ def esegui(settings: Settings, file: Path | None = None, ritaglio: bool = True, 
         da_importare = file if file is not None else next(iter(sorgenti.values()))
         temporanei, bbox, nomi = [], None, da_importare.name
 
-    metadati = {"aree": nomi, "fonti": " ".join(fonti), "dati_del": min(date) if date else None, "bbox": bbox}
+    istat_meta: dict = {"regioni": []}
+    if errori_istat:
+        istat_meta["errori_download"] = errori_istat
+    metadati = {"aree": nomi, "fonti": " ".join(fonti), "dati_del": min(date) if date else None, "bbox": bbox,
+                "istat": istat_meta}
     try:
-        risultato = importa(settings, da_importare, metadati)
+        risultato = importa(settings, da_importare, metadati, zip_istat)
     finally:
         for f in set(temporanei):
             f.unlink(missing_ok=True)
     if file is None and not conserva_file:
-        for f in set(sorgenti.values()):
+        for f in {*sorgenti.values(), *scaricati_istat}:
             f.unlink(missing_ok=True)
     return risultato

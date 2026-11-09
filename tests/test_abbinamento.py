@@ -201,3 +201,101 @@ def test_comune_non_determinato():
     r = abbina(37.5, 15.0, 5, {"vie": vie})
     assert r["ente"]["nome"] == "Comune (non determinato)"
     assert r["affidabilita"] == "bassa"
+
+
+# --- traverse interne: la regola dei 10.000 abitanti (centri da osm.centri, calcolati all'importazione) ------------
+
+def _con_centri(centri: list[dict], vicini: list[dict] | None = None, regioni: list[int] | None = None) -> Contesto:
+    return Contesto({
+        "comune": {"nome": "Acireale"}, "provincia": {"nome": "Catania", "tags": {"ref": "CT"}},
+        "regione": {"nome": "Sicilia", "tags": {"ref:ISTAT": "19"}},
+        "istat": {"regioni": [19] if regioni is None else regioni, "centri": centri, "vicini": vicini or []},
+    })
+
+
+def _centro(nome: str, pop: int | None, fonte: str = "istat", **kw) -> dict:
+    return {"fonte": fonte, "nome": nome, "popolazione": pop, "popolazione_localita": pop, "popolazione_osm": None,
+            "localita_istat": nome, "diviso": False, "tipo_loc": 1, "dal_bordo_m": 500 if fonte == "istat" else None,
+            **kw}
+
+
+SS = {"highway": "primary", "ref": "SS 114"}
+
+
+def test_traversa_di_un_centro_grande_e_del_comune():
+    v = valuta_via(SS, _con_centri([_centro("Catania", 296286)]))
+    assert v["ente"] == {"codice": "comune", "nome": "Comune di Acireale"}
+    assert any(m.startswith("Traversa interna") and "296.286 abitanti" in m for m in v["motivi"])
+    assert v["dubbi"] == [] and v["livello"] == 2
+    sp = valuta_via({"highway": "secondary", "ref": "SP 2"}, _con_centri([_centro("Catania", 296286)]))
+    assert sp["ente"]["codice"] == "comune"
+
+
+def test_centro_piccolo_resta_all_ente_della_strada():
+    v = valuta_via(SS, _con_centri([_centro("Aci Trezza", 4441)]))
+    assert v["ente"]["codice"] == "anas"
+    assert any("sotto i 10.000" in m for m in v["motivi"])
+
+
+@pytest.mark.parametrize("pop, codice", [(9800, "anas"), (10200, "comune")])
+def test_vicino_alla_soglia_affidabilita_bassa(pop, codice):
+    v = valuta_via(SS, _con_centri([_centro("Riposto", pop)]))
+    assert v["ente"]["codice"] == codice  # decide la soglia vera, 10.000
+    assert v["livello"] == 0 and any("vicini alla soglia" in d for d in v["dubbi"])
+
+
+def test_frazione_contata_da_istat_con_il_capoluogo():
+    frazione = _centro("Santa Maria delle Grazie", 1074, diviso=True, popolazione_localita=48328,
+                       localita_istat="Acireale")
+    v = valuta_via(SS, _con_centri([frazione]))
+    assert v["ente"]["codice"] == "anas"
+    assert any("Istat conta «Santa Maria delle Grazie» nel centro «Acireale» (48.328 abitanti)" in d
+               for d in v["dubbi"])
+    # tra i cartelli della frazione: il Comune l'ha delimitata a parte, niente dubbio
+    cartelli = _centro("Capomulini", 377, fonte="cartelli", diviso=True, popolazione_localita=48328,
+                       localita_istat="Acireale")
+    v = valuta_via(SS, _con_centri([cartelli, frazione]))
+    assert v["ente"]["codice"] == "anas" and v["dubbi"] == []
+    assert any("tra i cartelli di centro abitato «Capomulini»" in m for m in v["motivi"])
+
+
+def test_cartelli_senza_abitanti_usano_il_centro_istat():
+    v = valuta_via(SS, _con_centri([_centro("Catania", None, fonte="cartelli"), _centro("Catania", 296286)]))
+    assert v["ente"]["codice"] == "comune"
+    assert any("sezioni Istat 2021 del centro «Catania»" in m for m in v["motivi"])
+
+
+def test_fuori_dai_centri_e_vicino_al_limite():
+    vicino = _centro("Acireale", 28794, distanza_m=40)
+    v = valuta_via(SS, _con_centri([], [vicino]))
+    assert v["ente"]["codice"] == "anas"
+    assert any("Fuori dai centri abitati" in m for m in v["motivi"])
+    assert any(d.startswith("A 40 m dal centro abitato «Acireale»") for d in v["dubbi"])
+    # dentro, ma vicino al limite Istat
+    v = valuta_via(SS, _con_centri([_centro("Acireale", 28794, dal_bordo_m=60)]))
+    assert v["ente"]["codice"] == "comune" and any("dal limite del centro" in d for d in v["dubbi"])
+
+
+def test_strada_extraurbana_principale_in_un_centro_grande():
+    v = valuta_via({"highway": "trunk", "ref": "SS 114"}, _con_centri([_centro("Catania", 296286)]))
+    assert v["ente"]["codice"] == "anas"
+    assert any("tangenziali" in d for d in v["dubbi"])
+
+
+def test_senza_sezioni_istat_della_regione_restano_gli_indizi():
+    lenta = {**SS, "maxspeed": "50"}
+    v = valuta_via(lenta, _con_centri([_centro("Catania", 296286)], regioni=[3]))
+    assert v["ente"]["codice"] == "anas" and v["forse_traversa"]
+    assert any("Possibile traversa" in d for d in v["dubbi"])
+
+
+def test_abbina_riporta_il_centro_e_l_affidabilita():
+    intorno = {"vie": [_via(1, [[37.5, 14.99], [37.5, 15.01]], ref="SS 114")],
+               "comune": {"nome": "Riposto"}, "provincia": {"nome": "Catania", "tags": {"ref": "CT"}},
+               "regione": {"nome": "Sicilia", "tags": {"ref:ISTAT": "19"}},
+               "istat": {"regioni": [19], "centri": [_centro("Riposto", 10030)], "vicini": []}}
+    r = abbina(37.5, 15.0, 5, intorno)
+    assert r["ente"]["nome"] == "Comune di Riposto"
+    assert r["affidabilita"] == "bassa"
+    assert r["centro"]["nome"] == "Riposto" and r["centro"]["popolazione"] == 10030 and r["sezioni_istat"]
+    assert "livello" not in r["candidati"][0]
