@@ -42,6 +42,7 @@ $("form-chiave").addEventListener("submit", (ev) => {
   $("form-chiave").hidden = true;
   messaggio("Chiave salvata su questo telefono.");
   caricaStato();
+  doveSono();
 });
 
 async function chiama(percorso, corpo) {
@@ -118,13 +119,19 @@ setInterval(aggiornaGps, 5000);
 const PRECISIONE_BUONA_M = 25;
 const ATTESA_PRECISIONE_MS = 30000;
 
+const RIFAI_POSIZIONE_DOPO_MS = 120000;
+
+// All'apertura (e quando si torna sulla app dopo un po', se non si sta compilando una segnalazione) la posizione si
+// prende da sola: niente bottone "Dove sono?".
 function doveSono() {
+  if (stato.cercando || stato.inCorso) return;
   const p = stato.posizione;
   const fresca = p && Date.now() - p.quando < POSIZIONE_FRESCA_MS;
   if (fresca && p.precisione <= PRECISIONE_BUONA_M) return abbina(p.lat, p.lon, p.precisione, "gps");
   if (!("geolocation" in navigator)) return messaggio("Questo browser non dà la posizione.", "errore");
   let migliore = fresca ? p : null;
   let finito = false;
+  stato.cercando = true;
   const inizio = Date.now();
   // messaggio con il bottone per non aspettare oltre
   const avanzamento = () => {
@@ -137,6 +144,7 @@ function doveSono() {
   function fine() {
     if (finito) return;
     finito = true;
+    stato.cercando = false;
     clearTimeout(timer);
     clearInterval(orologio);
     navigator.geolocation.clearWatch(id);
@@ -155,7 +163,8 @@ function doveSono() {
     },
     (err) => {
       if (err.code === 1) {
-        finito = true; clearTimeout(timer); clearInterval(orologio); navigator.geolocation.clearWatch(id);
+        finito = true; stato.cercando = false; clearTimeout(timer); clearInterval(orologio);
+        navigator.geolocation.clearWatch(id);
         messaggio(erroreGps(err), "errore");
       }
     },
@@ -172,7 +181,6 @@ async function abbina(lat, lon, precisione, origine) {
   if (!stato.chiave) return chiediChiave("Serve la chiave di accesso.");
   if (stato.inCorso) return;
   stato.inCorso = true;
-  $("dove").disabled = true;
   messaggio(origine === "mappa" ? "Provo il punto scelto sulla mappa…" : "Cerco la strada…");
   try {
     const r = await chiama("/api/v1/abbina", { lat, lon, precisione_m: precisione, origine });
@@ -180,6 +188,7 @@ async function abbina(lat, lon, precisione, origine) {
     stato.risultato = r;
     stato.scelta = r.principale;
     stato.inviata = null;
+    stato.ultimoAbbina = Date.now();
     messaggio("");
     mostra(r, true);
   } catch (e) {
@@ -188,7 +197,6 @@ async function abbina(lat, lon, precisione, origine) {
     }
   } finally {
     stato.inCorso = false;
-    $("dove").disabled = false;
   }
 }
 
@@ -631,10 +639,14 @@ async function mostraMie() {
 
 iniziaMappa();
 avviaGps();
-$("dove").addEventListener("click", doveSono);
 $("apri-mie").addEventListener("click", mostraMie);
 if (!stato.chiave) chiediChiave();
-else caricaStato();
+else { caricaStato(); doveSono(); }
+// tornando sulla app dopo un po': posizione nuova, se non c'è una segnalazione a metà (foto già fatta) o appena inviata
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || !stato.chiave || stato.foto || stato.inviata) return;
+  if (!stato.ultimoAbbina || Date.now() - stato.ultimoAbbina > RIFAI_POSIZIONE_DOPO_MS) doveSono();
+});
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => { /* senza service worker funziona lo stesso, solo online */ });
 }
