@@ -16,7 +16,7 @@ const FOTO_LATO = 1600;
 const FOTO_MAX_BYTES = 1000 * 1024;
 
 const stato = {
-  chiave: leggi("chiave"), posizione: null, risultato: null, scelta: null, sceltaFatta: false, mappa: null,
+  chiave: leggi("chiave"), posizione: null, risultato: null, scelta: null, mappa: null,
   livello: null, inCorso: false, foto: null, tipo: "", nota: "", inviata: null,
 };
 
@@ -128,7 +128,6 @@ async function abbina(lat, lon, precisione, origine) {
     r.origine = origine;  // serve all'invio della segnalazione
     stato.risultato = r;
     stato.scelta = r.principale;
-    stato.sceltaFatta = false;
     stato.inviata = null;
     messaggio("");
     mostra(r, true);
@@ -154,7 +153,7 @@ function disegna(r, centra) {
     const scelta = c.osm_way === stato.scelta;
     L.polyline(c.geometria, { color: colore(c.ente), weight: scelta ? 9 : 5, opacity: scelta ? 0.9 : 0.55 })
       .addTo(g)
-      .on("click", () => { stato.scelta = c.osm_way; stato.sceltaFatta = true; mostra(r, false); });
+      .on("click", () => { stato.scelta = c.osm_way; mostra(r, false); });
   }
   for (const c of r.cartelli || []) {
     if (c.lat == null || c.lon == null) continue;
@@ -258,7 +257,7 @@ function sceltaCandidati(r) {
     campione.style.background = colore(c.ente);
     return el(
       "button", { type: "button", class: `candidato${c.osm_way === stato.scelta ? " scelto" : ""}`,
-        onclick: () => { stato.scelta = c.osm_way; stato.sceltaFatta = true; mostra(r, false); } },
+        onclick: () => { stato.scelta = c.osm_way; mostra(r, false); } },
       campione,
       el("span", { class: "testo" }, `${c.nome || c.ref || c.tipo}${c.ref && c.nome ? ` (${c.ref})` : ""}`,
         el("span", { class: "sotto" }, `${c.tipo} · ${c.distanza_m} m · ${c.ente.nome}`)),
@@ -348,7 +347,10 @@ async function preparaFoto(file) {
       img.src = URL.createObjectURL(file);
     });
   }
-  const w = sorgente.width, h = sorgente.height;
+  return codifica(sorgente, sorgente.width, sorgente.height);
+}
+
+async function codifica(sorgente, w, h) {
   if (!w || !h) throw new Error("formato");
   let scala = Math.min(1, FOTO_LATO / Math.max(w, h));
   for (let giro = 0; giro < 4; giro++) {
@@ -365,23 +367,66 @@ async function preparaFoto(file) {
   throw new Error("troppo grande");
 }
 
+// Fotocamera dentro la pagina (getUserMedia): si scatta e basta, la galleria non c'è. Firefox per Android ignora
+// capture="environment" del campo file e chiede fotocamera o galleria; il campo file resta solo se la pagina non può
+// usare la fotocamera (permesso negato, browser vecchio).
+async function apriFotocamera(fatto, riserva, notaFoto) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { riserva(); return; }
+  let flusso;
+  try {
+    flusso = await navigator.mediaDevices.getUserMedia({
+      audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+    });
+  } catch {
+    notaFoto.textContent = "La pagina non può usare la fotocamera (permesso negato?): scegli «Fotocamera» qui.";
+    riserva();
+    return;
+  }
+  const video = el("video", { autoplay: true, playsinline: true, muted: true, class: "video-fotocamera" });
+  video.muted = true;
+  video.srcObject = flusso;
+  const chiudi = () => { flusso.getTracks().forEach((tr) => tr.stop()); schermo.remove(); };
+  const scatta = el("button", { type: "button", class: "primario" }, "Scatta");
+  const annulla = el("button", { type: "button" }, "Annulla");
+  const schermo = el("div", { class: "fotocamera", role: "dialog", "aria-label": "Fotocamera" }, video,
+    el("div", { class: "comandi-fotocamera" }, annulla, scatta));
+  annulla.addEventListener("click", chiudi);
+  scatta.addEventListener("click", async () => {
+    scatta.disabled = true;
+    try {
+      const blob = await codifica(video, video.videoWidth, video.videoHeight);
+      chiudi();
+      fatto(blob);
+    } catch {
+      scatta.disabled = false;
+    }
+  });
+  document.body.append(schermo);
+  try { await video.play(); } catch { /* parte da solo con autoplay */ }
+}
+
 function boxSegnala(r) {
   if (r.esito === "fuori_area") return null;
   if (stato.inviata) return boxInviata(stato.inviata);
   const anteprima = el("img", { class: "anteprima", alt: "Foto da inviare", hidden: !stato.foto });
   if (stato.foto) anteprima.src = URL.createObjectURL(stato.foto);
   const notaFoto = el("p", { class: "piccolo", "aria-live": "polite" });
-  const inputFoto = el("input", { type: "file", accept: "image/*", capture: "environment", class: "nascosto",
-    id: "foto" });
+  const bottoneFoto = el("button", { type: "button", class: "bottone-foto" }, stato.foto ? "Rifai la foto" : "Scatta la foto");
+  const pronta = (blob) => {
+    stato.foto = blob;
+    anteprima.src = URL.createObjectURL(blob);
+    anteprima.hidden = false;
+    bottoneFoto.textContent = "Rifai la foto";
+    notaFoto.textContent = `Foto pronta (${Math.round(blob.size / 1024)} KB).`;
+  };
+  // riserva: il campo file del telefono (solo se la fotocamera della pagina non si può usare)
+  const inputFoto = el("input", { type: "file", accept: "image/*", capture: "environment", class: "nascosto" });
   inputFoto.addEventListener("change", async () => {
     const file = inputFoto.files && inputFoto.files[0];
     if (!file) return;
     notaFoto.textContent = "Preparo la foto…";
     try {
-      stato.foto = await preparaFoto(file);
-      anteprima.src = URL.createObjectURL(stato.foto);
-      anteprima.hidden = false;
-      notaFoto.textContent = `Foto pronta (${Math.round(stato.foto.size / 1024)} KB).`;
+      pronta(await preparaFoto(file));
     } catch (e) {
       stato.foto = null;
       notaFoto.textContent = e.message === "formato"
@@ -390,6 +435,8 @@ function boxSegnala(r) {
         : "Foto non utilizzabile: riprova.";
     }
   });
+  bottoneFoto.addEventListener("click", () => apriFotocamera(pronta, () => inputFoto.click(), notaFoto));
+  const scelta = r.candidati.find((c) => c.osm_way === stato.scelta);
   const tipi = Object.entries(NOMI_TIPO).map(([v, testo]) => el("label", { class: "scelta-tipo" },
     el("input", { type: "radio", name: "tipo", value: v, checked: stato.tipo === v,
       onchange: () => { stato.tipo = v; } }), testo));
@@ -403,11 +450,13 @@ function boxSegnala(r) {
   return el("section", { class: "blocco segnala" },
     el("h2", {}, "Segnala qui"),
     el("div", { class: "tipi" }, tipi),
-    el("label", { for: "foto", class: "bottone-foto" }, stato.foto ? "Rifai la foto" : "Scatta la foto"),
-    inputFoto, anteprima, notaFoto,
+    bottoneFoto, inputFoto, anteprima, notaFoto,
     nota,
+    scelta ? el("p", { class: "strada-scelta" }, "Strada: ", el("strong", {}, scelta.nome || scelta.ref || scelta.tipo),
+      ` → ${scelta.ente.nome}`) : null,
     r.esito === "da_scegliere"
-      ? el("p", { class: "piccolo" }, "Qui vicino ci sono strade di enti diversi: tocca qui sotto quella su cui sei.")
+      ? el("p", { class: "piccolo" }, "Qui vicino ci sono strade di enti diversi: se non sei su questa, tocca quella "
+        + "giusta qui sotto o sulla mappa.")
       : null,
     invia, esito);
 }
@@ -415,10 +464,6 @@ function boxSegnala(r) {
 async function inviaSegnalazione(r, bottone, esito) {
   if (!stato.tipo) { esito.textContent = "Scegli se è una carcassa o sono rifiuti."; return; }
   if (!stato.foto) { esito.textContent = "Serve una foto."; return; }
-  if (r.esito === "da_scegliere" && !stato.sceltaFatta) {
-    esito.textContent = "Tocca la strada su cui sei (qui sotto o sulla mappa).";
-    return;
-  }
   const p = r.punto;
   const dati = {
     lat: p.lat, lon: p.lon, precisione_m: p.precisione_m, origine: r.origine || "gps", tipo: stato.tipo,
@@ -445,7 +490,8 @@ async function inviaSegnalazione(r, bottone, esito) {
   } catch (e) {
     bottone.disabled = false;
     if (e.message !== "chiave") {
-      esito.textContent = navigator.onLine ? `Non inviata: ${e.message}` : "Senza rete: riprova quando c'è campo.";
+      const motivo = e.status === 413 ? "il server non accetta ancora foto di questa dimensione" : e.message;
+      esito.textContent = navigator.onLine ? `Non inviata: ${motivo}` : "Senza rete: riprova quando c'è campo.";
     }
   }
 }
