@@ -29,7 +29,9 @@ import re
 DISTANZA_MAX_M = 60.0  # oltre: nessuna strada
 SOGLIA_MIN_M = 8.0  # strade alternative: entro la più vicina + max(precisione, SOGLIA_MIN_M)
 SOGLIA_MAX_M = 40.0
-PENALITA_MINORI_M = 3.0  # per scegliere la strada principale le strade minori contano come più lontane
+# Per scegliere la strada principale col GPS, le strade minori (servizio, ciclabili, marciapiedi...) contano come più
+# lontane di questi metri. Per un punto toccato sulla mappa no: il tocco è preciso, vale la distanza vera.
+PENALITA_MINORI_M = 2.0
 RAGGIO_CONFINI_M = 150
 PRECISIONE_MEDIA_M = 30
 PRECISIONE_BASSA_M = 75
@@ -399,8 +401,11 @@ def fuori_area(lat: float, lon: float, precisione_m: float | None, area: str) ->
     }
 
 
-def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict) -> dict:
+def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict, origine: str = "gps") -> dict:
+    """origine: "gps" (posizione del telefono) o "mappa" (punto toccato sulla mappa: niente penalità alle strade
+    minori nella scelta della principale)."""
     ctx = Contesto(intorno)
+    penalita = 0.0 if origine == "mappa" else PENALITA_MINORI_M
     base = _base(lat, lon, precisione_m, ctx, intorno)
 
     misurate = []
@@ -444,7 +449,7 @@ def abbina(lat: float, lon: float, precisione_m: float | None, intorno: dict) ->
             "highway": hw,
             "tipo": TIPI.get(hw, hw),
             "distanza_m": round(d, 1),
-            "_punteggio": d + (PENALITA_MINORI_M if hw in MINORI else 0.0),
+            "_punteggio": d + (penalita if hw in MINORI else 0.0),
             **valutazione,
             "percorsi": [
                 {"nome": p.get("nome"), "gestore": _pulisci((p.get("tags") or {}).get("operator") or "") or None}

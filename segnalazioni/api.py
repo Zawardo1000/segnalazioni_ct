@@ -50,7 +50,7 @@ def abbina(body: RichiestaAbbina, request: Request) -> dict:
         if intorno is None:
             risultato = abbinamento.fuori_area(body.lat, body.lon, body.precisione_m, settings.nome_aree)
         else:
-            risultato = abbinamento.abbina(body.lat, body.lon, body.precisione_m, intorno)
+            risultato = abbinamento.abbina(body.lat, body.lon, body.precisione_m, intorno, origine=body.origine)
         ente = risultato.get("ente") or risultato.get("ente_suggerito")
         prova = Prova(
             lat=body.lat,

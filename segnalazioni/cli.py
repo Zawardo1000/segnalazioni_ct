@@ -44,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("lat", type=float)
     p.add_argument("lon", type=float)
     p.add_argument("--precisione", type=float, default=None, help="precisione del GPS in metri")
+    p.add_argument("--mappa", action="store_true", help="come un punto toccato sulla mappa (distanza vera)")
     p = sub.add_parser("prove", help="ultime prove fatte con la pagina")
     p.add_argument("--sbagliate", action="store_true", help="solo quelle segnate sbagliate")
     p.add_argument("-n", type=int, default=30, help="quante (predefinito 30)")
@@ -88,7 +89,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.comando == "abbina":
                 try:
                     intorno = stradario.leggi_intorno(s, args.lat, args.lon, stradario.raggio_ricerca(args.precisione))
-                    r = abbinamento.abbina(args.lat, args.lon, args.precisione, intorno)
+                    r = abbinamento.abbina(args.lat, args.lon, args.precisione, intorno,
+                                           origine="mappa" if args.mappa else "gps")
                 except stradario.FuoriArea:
                     r = abbinamento.fuori_area(args.lat, args.lon, args.precisione, settings.nome_aree)
                 for c in r["candidati"]:

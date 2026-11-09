@@ -164,6 +164,17 @@ def test_distanza():
     assert distanza_m(37.5, 15.0, [[37.5, 15.0]]) == 0
 
 
+def test_principale_col_gps_e_dalla_mappa():
+    # come la prova 15 di Segrate: ciclabile a 2,4 m, strada comunale a 3,3 m
+    vie = [_via(1, [[37.5 + 2.4 / 111_000, 14.99], [37.5 + 2.4 / 111_000, 15.01]], highway="cycleway"),
+           _via(2, [[37.5 - 3.3 / 111_000, 14.99], [37.5 - 3.3 / 111_000, 15.01]], highway="tertiary")]
+    intorno = {"vie": vie, "comune": {"nome": "X"}}
+    # GPS: la ciclabile conta 2 m in più (4,4 m) e vince la strada
+    assert abbina(37.5, 15.0, 5, intorno)["principale"] == 2
+    # punto toccato sulla mappa: distanza vera, vince la ciclabile
+    assert abbina(37.5, 15.0, 5, intorno, origine="mappa")["principale"] == 1
+
+
 def test_nessuna_strada_vicina():
     r = abbina(37.5, 15.0, 5, {"vie": [_via(1, [[37.502, 14.99], [37.502, 15.01]])], "comune": {"nome": "X"}})
     assert r["esito"] == "nessuna_strada"

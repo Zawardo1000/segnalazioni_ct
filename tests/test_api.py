@@ -79,6 +79,15 @@ def test_abbina_salva_la_prova_e_l_esito(app, con_chiave):
     assert prova.origine == "gps"
 
 
+def test_origine_mappa_arriva_all_abbinamento(app, con_chiave):
+    p = _c1(app)
+    r = app.post("/api/v1/abbina", json={"lat": p["lat"], "lon": p["lon"], "precisione_m": 5, "origine": "mappa"},
+                 headers=con_chiave)
+    assert r.status_code == 200 and r.json()["principale"] == 186213866
+    with app.app.state.db.session() as s:
+        assert s.scalars(select(Prova)).one().origine == "mappa"
+
+
 def test_fuori_area(app, con_chiave):
     _c1(app)
     r = app.post("/api/v1/abbina", json={"lat": 45.0, "lon": 9.0, "origine": "mappa"}, headers=con_chiave)
