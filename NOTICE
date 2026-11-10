@@ -1,0 +1,21 @@
+Segnalazioni CT
+Copyright (C) 2026 Massimiliano Perotti
+
+Questo programma è software libero: puoi ridistribuirlo e/o modificarlo secondo i termini
+della GNU Affero General Public License pubblicata dalla Free Software Foundation, versione 3
+o (a tua scelta) qualsiasi versione successiva (SPDX: AGPL-3.0-or-later).
+
+Questo programma è distribuito nella speranza che sia utile, ma SENZA ALCUNA GARANZIA, nemmeno
+la garanzia implicita di COMMERCIABILITÀ o di IDONEITÀ A UN PARTICOLARE SCOPO. Vedi la GNU Affero
+General Public License per i dettagli: il testo completo è nel file LICENSE.
+
+Se modifichi il programma e lo rendi disponibile in rete, la licenza (sezione 13) chiede di
+offrire a chi lo usa il codice sorgente della versione modificata.
+
+Condizione aggiuntiva (sezione 7, lettera b, della licenza): chi distribuisce il programma o una
+sua versione modificata, o lo rende disponibile in rete, deve conservare questa nota, compresa la
+menzione dell'autore originale, Massimiliano Perotti, nelle note legali e nelle informazioni
+sull'applicazione mostrate agli utenti.
+
+I dati dello stradario derivano da OpenStreetMap (© OpenStreetMap contributors, licenza ODbL) e
+dalle Basi territoriali Istat 2021; si scaricano all'importazione e non fanno parte del codice.
