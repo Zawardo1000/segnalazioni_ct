@@ -29,7 +29,10 @@ def test_pagina_file_e_intestazioni(app):
     assert "object-src 'none'" in csp
     assert r.headers["x-content-type-options"] == "nosniff"
     assert "geolocation=(self)" in r.headers["permissions-policy"]
-    assert app.get("/manifest.webmanifest").headers["content-type"].startswith("application/manifest+json")
+    manifest = app.get("/manifest.webmanifest")
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    # nome dell'app installata (sotto l'icona) e della finestra di installazione
+    assert manifest.json()["short_name"] == "Segnalazioni" and manifest.json()["name"] == "Segnalazioni CT"
     assert app.get("/sw.js").status_code == 200
     # tutti i file che il service worker mette in cache all'installazione (se ne manca uno, non si installa)
     assert "blob:" in csp  # foto della segnalazione lette con fetch (header del codice privato)

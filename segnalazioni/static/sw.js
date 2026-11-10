@@ -1,9 +1,9 @@
 "use strict";
-// Service worker della pagina di prova: rende l'app installabile e la apre anche senza rete.
+// Service worker di Segnalazioni CT: rende l'app installabile e la apre anche senza rete.
 // Prima la rete, poi la copia salvata: durante le prove si vede sempre l'ultima versione. L'API non passa mai dalla
 // cache (ogni abbinamento è nuovo), le tessere della mappa le gestisce il browser.
 
-const CACHE = "abbina-v2";
+const CACHE = "segnalazioni-v1"; // un nome nuovo cancella le copie vecchie all'attivazione
 const GUSCIO = [
   "/",
   "/static/comune.js",

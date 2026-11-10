@@ -1,7 +1,7 @@
 {
-  "name": "Segnalazioni CT – abbinamento strade",
-  "short_name": "Abbina strada",
-  "description": "Prova dell'abbinamento tra una posizione e l'ente competente per la strada",
+  "name": "Segnalazioni CT",
+  "short_name": "Segnalazioni",
+  "description": "Segnala carcasse di animali e rifiuti abbandonati sulle strade all'ente competente",
   "lang": "it",
   "start_url": "/",
   "scope": "/",
