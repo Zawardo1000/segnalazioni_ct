@@ -48,6 +48,27 @@ def test_pagina_file_e_intestazioni(app):
     assert app.get("/docs").status_code == 404 and app.get("/openapi.json").status_code == 404
 
 
+def test_regole_tessere_osm(app):
+    """Regole d'uso delle tessere di OSM (https://operations.osmfoundation.org/policies/tiles/): senza Referer ogni
+    tessera diventa "403 Access blocked". Nessuna pagina può restringere la Referrer-Policy; un solo indirizzo, esatto."""
+    for pagina in ("/", "/s", "/gestione"):
+        r = app.get(pagina)
+        assert r.status_code == 200, pagina
+        assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin", pagina
+        assert 'name="referrer"' not in r.text.replace("'", '"'), pagina
+    assert "img-src 'self' data: blob: https://tile.openstreetmap.org;" in r.headers["content-security-policy"]
+    comune = app.get("/static/comune.js").text
+    assert 'TESSERE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"' in comune
+    assert 'referrerPolicy: "strict-origin-when-cross-origin"' in comune
+    assert "OpenStreetMap</a> contributors" in comune  # attribuzione visibile sulla mappa
+    for js in ("/static/app.js", "/static/segnalazione.js", "/static/gestione.js"):
+        testo = app.get(js).text
+        assert "livelloTessere()" in testo and "tile.openstreetmap.org" not in testo and "L.tileLayer" not in testo, js
+    # il service worker non mette in cache né scarica in anticipo le tessere (solo file dello stesso sito)
+    sw = app.get("/sw.js").text
+    assert "tile.openstreetmap.org" not in sw and "url.origin !== self.location.origin" in sw
+
+
 def test_chiave_obbligatoria(app):
     corpo = {"lat": 37.5, "lon": 15.0}
     assert app.post("/api/v1/abbina", json=corpo).status_code == 401

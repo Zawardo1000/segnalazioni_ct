@@ -44,9 +44,7 @@ async function apri() {
   );
   $("segnalazione").hidden = false;
   const mappa = L.map("mappa-piccola", { zoomControl: false }).setView([s.lat, s.lon], 17);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(mappa);
+  livelloTessere().addTo(mappa);
   L.circleMarker([s.lat, s.lon], { radius: 8, color: "#fff", weight: 2, fillColor: "#0b3d6b", fillOpacity: 1 }).addTo(mappa);
   if (s.foto) {
     try {

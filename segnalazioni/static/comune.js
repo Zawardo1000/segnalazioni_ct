@@ -31,6 +31,22 @@ function dataOra(iso) {
   return iso ? new Date(iso).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" }) : "?";
 }
 
+// Tessere della mappa da tile.openstreetmap.org, per tutte le pagine. Regole d'uso di OSM
+// (https://operations.osmfoundation.org/policies/tiles/): questo indirizzo esatto in https, attribuzione visibile
+// sulla mappa, Referer con l'origine del sito, cache del browser, niente tessere scaricate in anticipo (il service
+// worker non le tocca). Senza Referer OSM risponde con la tessera "403 Access blocked": nessuna pagina deve avere una
+// Referrer-Policy più stretta di quella del server (niente <meta name="referrer" content="no-referrer">), e
+// referrerPolicy qui sotto la impone comunque alle tessere. Per cambiare fornitore basta cambiare qui (e la CSP).
+const TESSERE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+
+function livelloTessere() {
+  return L.tileLayer(TESSERE_URL, {
+    maxZoom: 19,
+    referrerPolicy: "strict-origin-when-cross-origin",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  });
+}
+
 const NOMI_TIPO = { carcassa: "Carcassa di animale", rifiuto: "Rifiuti abbandonati" };
 const NOMI_STATO = { nuova: "Inviata", presa_in_carico: "Presa in carico", chiusa: "Chiusa", da_smistare: "In attesa di assegnazione" };
 

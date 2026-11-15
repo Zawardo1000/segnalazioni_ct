@@ -37,9 +37,7 @@ async function avvia() {
   if (g.io.ruolo === "amministratore") $("f-stato").value = "da_smistare";
   g.enti = (await api("/enti")).enti;
   g.mappa = L.map("mappa-gestione").setView([37.53, 15.07], 10);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(g.mappa);
+  livelloTessere().addTo(g.mappa);
   g.livello = L.layerGroup().addTo(g.mappa);
   await carica();
 }

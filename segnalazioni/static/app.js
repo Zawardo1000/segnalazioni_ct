@@ -66,10 +66,7 @@ async function chiama(percorso, corpo) {
 
 function iniziaMappa() {
   const m = L.map("mappa").setView([37.53, 15.07], 11);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(m);
+  livelloTessere().addTo(m);
   stato.livello = L.layerGroup().addTo(m);
   // pressione lunga sul telefono, tasto destro sul PC: prova quel punto
   m.on("contextmenu", (e) => abbina(e.latlng.lat, e.latlng.lng, 5, "mappa"));

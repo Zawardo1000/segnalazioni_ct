@@ -5,6 +5,9 @@ fastapi_default). nginx aggiunge HTTPS, i percorsi ammessi e il limite per IP.
 
 La pagina carica solo file propri (Leaflet è in static/vendor) e le tessere della mappa da tile.openstreetmap.org.
 Referrer-Policy: le regole d'uso delle tessere di OpenStreetMap chiedono un Referer valido, quindi si manda l'origine.
+Le pagine non devono restringerla (niente <meta name="referrer" content="no-referrer">): senza Referer OSM risponde a
+ogni tessera con l'immagine "403 Access blocked" (successo il 15/11/2026 su /s e /gestione). Il codice privato del link
+sta nel frammento (#...), che nel Referer non va mai; verso altri siti va comunque solo l'origine.
 """
 
 import hmac
